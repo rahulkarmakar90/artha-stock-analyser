@@ -1,0 +1,13 @@
+anthropic
+yfinance
+pandas
+numpy
+feedparser
+requests
+textblob
+scikit-learn
+google-genai
+fastapi
+uvicorn[standard]
+websockets
+python-dotenv

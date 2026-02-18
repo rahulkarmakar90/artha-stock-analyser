@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Artha — Indian Stock Analyser</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d2e;
+    --border: #2a2d3e;
+    --accent: #6c63ff;
+    --green: #22c55e;
+    --red: #ef4444;
+    --yellow: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #8892a4;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+  header span.accent { color: var(--accent); }
+  header small { color: var(--muted); font-size: 0.8rem; margin-left: 4px; }
+
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    background: var(--surface);
+  }
+  .tab {
+    padding: 12px 24px; cursor: pointer; font-size: 0.9rem;
+    color: var(--muted); border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover { color: var(--text); }
+
+  .page { display: none; padding: 32px; max-width: 1100px; margin: 0 auto; }
+  .page.active { display: block; }
+
+  /* ── Search ── */
+  .search-wrap { position: relative; margin-bottom: 32px; }
+  .search-bar { display: flex; gap: 12px; }
+  .search-bar input {
+    flex: 1; padding: 14px 18px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); font-size: 1rem; outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+  .search-bar input::placeholder { color: var(--muted); }
+
+  /* Autocomplete dropdown */
+  .autocomplete {
+    position: absolute; top: calc(100% + 4px); left: 0;
+    right: 80px; /* leave room for button */
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    z-index: 100; display: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .autocomplete.show { display: block; }
+  .ac-header {
+    padding: 8px 16px; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 1px; color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .ac-item {
+    padding: 10px 16px; cursor: pointer; display: flex;
+    align-items: center; gap: 12px; transition: background 0.15s;
+  }
+  .ac-item:hover, .ac-item.focused { background: var(--border); }
+  .ac-sym { font-weight: 700; font-size: 0.9rem; min-width: 90px; color: var(--accent); }
+  .ac-name { font-size: 0.85rem; color: var(--text); flex: 1; }
+  .ac-sector { font-size: 0.72rem; color: var(--muted); }
+  .ac-group-badge {
+    padding: 3px 8px; border-radius: 20px; font-size: 0.7rem;
+    background: var(--border); color: var(--muted);
+  }
+
+  button {
+    padding: 14px 28px; border-radius: var(--radius);
+    border: none; background: var(--accent); color: #fff;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    transition: opacity 0.2s; white-space: nowrap;
+  }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.secondary {
+    background: var(--border); color: var(--text);
+  }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 24px; margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin-bottom: 16px;
+  }
+
+  .quote-header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  .quote-symbol { font-size: 1.8rem; font-weight: 800; }
+  .quote-price { font-size: 2.2rem; font-weight: 700; }
+  .quote-change { font-size: 1rem; padding: 4px 10px; border-radius: 6px; }
+  .up   { color: var(--green); background: #052e16; }
+  .down { color: var(--red);   background: #2d0a0a; }
+
+  .quote-meta {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px; margin-top: 20px;
+  }
+  .meta-item label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .meta-item span  { font-size: 1rem; font-weight: 600; }
+
+  .indicators { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+  .indicator  { background: var(--bg); border-radius: 8px; padding: 16px; }
+  .indicator label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .indicator .val  { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+  .rsi-green { color: var(--green); }
+  .rsi-red   { color: var(--red);   }
+  .rsi-yellow{ color: var(--yellow);}
+
+  .outlook-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .outlook-card { background: var(--bg); border-radius: 8px; padding: 16px; text-align: center; }
+  .outlook-card .timeframe { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .outlook-card .badge {
+    display: inline-block; padding: 6px 12px; border-radius: 20px;
+    font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+  }
+  .outlook-card .conf { font-size: 0.8rem; color: var(--muted); }
+  .b-strongly_bullish { background: #052e16; color: var(--green); }
+  .b-bullish          { background: #0a1f14; color: #4ade80; }
+  .b-neutral          { background: #1c1408; color: var(--yellow); }
+  .b-bearish          { background: #2d0a0a; color: #f87171; }
+  .b-strongly_bearish { background: #450a0a; color: var(--red); }
+
+  .range-bar-wrap { margin-top: 12px; }
+  .range-labels   { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+  .range-track    { height: 8px; background: var(--border); border-radius: 4px; }
+  .range-fill     { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6c63ff, #22c55e); }
+  .range-values   { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; margin-top: 6px; }
+
+  .chart-wrap { height: 200px; margin-top: 4px; }
+
+  .news-list  { list-style: none; }
+  .news-item  {
+    padding: 12px 0; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 12px;
+  }
+  .news-item:last-child { border-bottom: none; }
+  .news-sent  {
+    flex-shrink: 0; padding: 3px 8px; border-radius: 4px;
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  }
+  .sent-positive{ background: #052e16; color: var(--green); }
+  .sent-negative{ background: #2d0a0a; color: var(--red);   }
+  .sent-neutral { background: #1c1408; color: var(--yellow);}
+  .news-title   { font-size: 0.88rem; line-height: 1.4; }
+  .news-title a { color: var(--text); text-decoration: none; }
+  .news-title a:hover { color: var(--accent); }
+  .news-source  { font-size: 0.73rem; color: var(--muted); margin-top: 3px; }
+
+  /* ── Scanner ── */
+  .scan-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+  .scan-header p { color: var(--muted); font-size: 0.88rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  thead th {
+    text-align: left; padding: 10px 14px; color: var(--muted);
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  tbody tr:hover { background: var(--surface); }
+  tbody td { padding: 12px 14px; }
+  tbody tr.mover-highlight { background: #0d1f12; }
+  tbody tr.mover-highlight:hover { background: #112618; }
+  .tbl-symbol { font-weight: 700; cursor: pointer; color: var(--accent); }
+  .tbl-symbol:hover { text-decoration: underline; }
+
+  /* ── Chat ── */
+  .chat-layout { display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 500px; }
+  .chat-context-bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0; margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .chat-context-bar label { font-size: 0.8rem; color: var(--muted); }
+  .context-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 12px; background: var(--surface);
+    border: 1px solid var(--accent); border-radius: 20px;
+    font-size: 0.82rem; font-weight: 600; color: var(--accent);
+  }
+  .context-chip button {
+    padding: 0; background: none; color: var(--muted);
+    font-size: 0.9rem; width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+  }
+  .context-chip button:hover { color: var(--red); background: none; opacity: 1; }
+  .no-context { font-size: 0.82rem; color: var(--muted); font-style: italic; }
+
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 8px 0;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .chat-messages::-webkit-scrollbar { width: 4px; }
+  .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .msg { display: flex; flex-direction: column; max-width: 80%; }
+  .msg.user  { align-self: flex-end; align-items: flex-end; }
+  .msg.artha { align-self: flex-start; align-items: flex-start; }
+  .msg-bubble {
+    padding: 12px 16px; border-radius: 16px;
+    font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap;
+  }
+  .msg.user  .msg-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.artha .msg-bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .msg-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
+
+  .typing-indicator { display: flex; gap: 4px; align-items: center; padding: 12px 16px; }
+  .typing-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--muted); animation: bounce 1.2s infinite;
+  }
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+  .chat-suggestions {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 8px 0; margin-bottom: 8px;
+  }
+  .suggestion {
+    padding: 6px 14px; border-radius: 20px; font-size: 0.8rem;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); cursor: pointer; transition: all 0.15s;
+  }
+  .suggestion:hover { border-color: var(--accent); color: var(--accent); }
+
+  .chat-input-row {
+    display: flex; gap: 10px; padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .chat-input-row input {
+    flex: 1; padding: 12px 16px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+  }
+  .chat-input-row input:focus { border-color: var(--accent); }
+  .chat-input-row input::placeholder { color: var(--muted); }
+  .chat-input-row button { padding: 12px 22px; }
+
+  /* ── Shared ── */
+  .loader { display: none; text-align: center; padding: 48px; color: var(--muted); font-size: 0.9rem; }
+  .loader.show { display: block; }
+  .spinner {
+    width: 36px; height: 36px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg {
+    background: #2d0a0a; border: 1px solid #7f1d1d;
+    color: #fca5a5; border-radius: var(--radius);
+    padding: 16px 20px; margin-bottom: 20px; display: none;
+  }
+  .error-msg.show { display: block; }
+
+  @media (max-width: 640px) {
+    .outlook-grid { grid-template-columns: 1fr; }
+    header { padding: 12px 16px; }
+    .page  { padding: 16px; }
+    .tabs  { padding: 0 16px; }
+    .msg   { max-width: 95%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span class="accent">Artha</span> <small>अर्थ</small></h1>
+  <span style="color:var(--muted);font-size:0.85rem;margin-left:auto;">Indian Stock Market Analyser</span>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('analyse')">Analyse Stock</div>
+  <div class="tab" onclick="switchTab('scanner')">Nifty 50 Scanner</div>
+  <div class="tab" onclick="switchTab('chat')">Chat</div>
+</div>
+
+<!-- ══ ANALYSE TAB ══ -->
+<div id="tab-analyse" class="page active">
+  <div class="search-wrap">
+    <div class="search-bar">
+      <input id="sym-input" type="text" autocomplete="off"
+             placeholder="Search by name, symbol, sector or index — e.g. HDFC Bank, IT stocks, Nifty Bank"
+             oninput="onSearchInput(this.value)"
+             onkeydown="onSearchKey(event)" />
+      <button onclick="analyseFromSearch()" id="analyse-btn">Analyse</button>
+    </div>
+    <div id="autocomplete" class="autocomplete"></div>
+  </div>
+
+  <div id="analyse-error" class="error-msg"></div>
+  <div id="analyse-loader" class="loader"><div class="spinner"></div>Fetching data…</div>
+  <div id="analyse-result"></div>
+</div>
+
+<!-- ══ SCANNER TAB ══ -->
+<div id="tab-scanner" class="page">
+  <div class="scan-header">
+    <button onclick="runScan()" id="scan-btn">Scan Nifty 50</button>
+    <p id="scan-status">Click Scan to find top movers across Nifty 50 stocks.</p>
+  </div>
+  <div id="scan-error" class="error-msg"></div>
+  <div id="scan-loader" class="loader"><div class="spinner"></div>Scanning 50 stocks — this takes ~60 seconds…</div>
+  <div id="scan-result"></div>
+</div>
+
+<!-- ══ CHAT TAB ══ -->
+<div id="tab-chat" class="page">
+  <div class="chat-layout">
+    <!-- Context bar -->
+    <div class="chat-context-bar">
+      <label>Stock context:</label>
+      <div id="chat-context-display">
+        <span class="no-context">None — analyse a stock to set context automatically</span>
+      </div>
+      <button class="secondary" onclick="clearChat()" style="padding:6px 14px;font-size:0.8rem;margin-left:auto;">Clear chat</button>
+    </div>
+
+    <!-- Messages -->
+    <div class="chat-messages" id="chat-messages">
+      <!-- Suggestions shown when empty -->
+      <div id="chat-empty">
+        <p style="color:var(--muted);font-size:0.9rem;margin-bottom:16px;">
+          Ask Artha anything about Indian stocks. Go to <strong>Analyse Stock</strong> first to set a context, or ask a general question below.
+        </p>
+        <div class="chat-suggestions" id="chat-suggestions">
+          <span class="suggestion" onclick="sendSuggestion(this)">What does the RSI tell me?</span>
+          <span class="suggestion" onclick="sendSuggestion(this)">Is this a good time to buy?</span>
+          <span class="suggestion" onclick="sendSuggestion(this)">Explain the MACD signal</span>
+          <span class="suggestion" onclick="sendSuggestion(this)">What are the short-term risks?</span>
+          <span class="suggestion" onclick="sendSuggestion(this)">How does news sentiment affect price?</span>
+          <span class="suggestion" onclick="sendSuggestion(this)">Compare short-term and long-term outlook</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input -->
+    <div class="chat-input-row">
+      <input id="chat-input" type="text" placeholder="Ask about a stock, sector, indicator…"
+             onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendChat(); }" />
+      <button onclick="sendChat()" id="chat-send-btn">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════
+   State
+══════════════════════════════════════════════ */
+let currentSymbol   = '';   // set when a stock is analysed
+let chatHistory     = [];   // [{role, content}]
+let acResults       = [];   // current autocomplete results
+let acFocusIdx      = -1;   // keyboard nav index
+let acDebounce      = null;
+let sparkChart      = null;
+
+/* ══════════════════════════════════════════════
+   Tabs
+══════════════════════════════════════════════ */
+function switchTab(name) {
+  const names = ['analyse', 'scanner', 'chat'];
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', names[i] === name));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'chat') document.getElementById('chat-input').focus();
+}
+
+/* ══════════════════════════════════════════════
+   Helpers
+══════════════════════════════════════════════ */
+const fmt    = n => n == null ? '—' : '₹' + Number(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+const fmtPct = n => n == null ? '—' : (n >= 0 ? '+' : '') + Number(n).toFixed(2) + '%';
+const fmtNum = n => n == null ? '—' : Number(n).toLocaleString('en-IN');
+
+function outlookBadge(outlook) {
+  const labels = { strongly_bullish:'Strongly Bullish', bullish:'Bullish', neutral:'Neutral', bearish:'Bearish', strongly_bearish:'Strongly Bearish' };
+  return `<span class="badge b-${outlook}">${labels[outlook] || outlook}</span>`;
+}
+function sentimentBadge(s) {
+  const cls = s === 'positive' ? 'sent-positive' : s === 'negative' ? 'sent-negative' : 'sent-neutral';
+  return `<span class="news-sent ${cls}">${s}</span>`;
+}
+function rsiClass(rsi) {
+  if (rsi <= 30) return 'rsi-green';
+  if (rsi >= 70) return 'rsi-red';
+  return 'rsi-yellow';
+}
+
+/* ══════════════════════════════════════════════
+   Autocomplete
+══════════════════════════════════════════════ */
+function onSearchInput(val) {
+  clearTimeout(acDebounce);
+  if (val.trim().length < 2) { hideAC(); return; }
+  acDebounce = setTimeout(() => fetchAC(val.trim()), 280);
+}
+
+async function fetchAC(q) {
+  try {
+    const res  = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    acResults  = data.results || [];
+    acFocusIdx = -1;
+    renderAC(data);
+  } catch { hideAC(); }
+}
+
+function renderAC(data) {
+  const el = document.getElementById('autocomplete');
+  if (!acResults.length) { hideAC(); return; }
+
+  const isGroup   = data.type === 'list';
+  const groupName = data.group ? ` — ${data.group}` : '';
+  const headerTxt = isGroup
+    ? `${data.match_type === 'index' ? 'Index' : 'Sector'} match${groupName} (${acResults.length} stocks)`
+    : (data.match_type === 'fuzzy' ? 'Did you mean…' : 'Match found');
+
+  const items = acResults.slice(0, isGroup ? 8 : 6).map((r, i) => `
+    <div class="ac-item" data-idx="${i}" onmousedown="selectAC(${i})">
+      <span class="ac-sym">${r.symbol}</span>
+      <span class="ac-name">${r.name}</span>
+      <span class="ac-sector">${r.sector}</span>
+    </div>`).join('');
+
+  const more = acResults.length > 8 ? `<div class="ac-header" style="border-top:1px solid var(--border)">+${acResults.length - 8} more…</div>` : '';
+
+  el.innerHTML = `<div class="ac-header">${headerTxt}</div>${items}${more}`;
+  el.classList.add('show');
+}
+
+function hideAC() {
+  document.getElementById('autocomplete').classList.remove('show');
+  acResults = []; acFocusIdx = -1;
+}
+
+function selectAC(idx) {
+  const r = acResults[idx];
+  if (!r) return;
+  document.getElementById('sym-input').value = r.symbol;
+  hideAC();
+  analyseStock(r.symbol);
+}
+
+function onSearchKey(e) {
+  const ac = document.getElementById('autocomplete');
+  const items = ac.querySelectorAll('.ac-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acFocusIdx = Math.min(acFocusIdx + 1, items.length - 1);
+    items.forEach((el, i) => el.classList.toggle('focused', i === acFocusIdx));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acFocusIdx = Math.max(acFocusIdx - 1, -1);
+    items.forEach((el, i) => el.classList.toggle('focused', i === acFocusIdx));
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (acFocusIdx >= 0 && acResults[acFocusIdx]) {
+      selectAC(acFocusIdx);
+    } else {
+      analyseFromSearch();
+    }
+  } else if (e.key === 'Escape') {
+    hideAC();
+  }
+}
+
+// Click outside to close autocomplete
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) hideAC();
+});
+
+/* ══════════════════════════════════════════════
+   Analyse
+══════════════════════════════════════════════ */
+async function analyseFromSearch() {
+  const raw = document.getElementById('sym-input').value.trim();
+  if (!raw) return;
+  hideAC();
+
+  // Try to resolve first via search API
+  try {
+    const res  = await fetch(`/api/search?q=${encodeURIComponent(raw)}`);
+    const data = await res.json();
+    if (data.type === 'single' && data.results.length) {
+      analyseStock(data.results[0].symbol);
+      return;
+    } else if (data.type === 'list' && data.results.length) {
+      // Show a picker for sector/index results
+      showGroupPicker(data);
+      return;
+    }
+  } catch {}
+
+  // Fallback: treat as direct symbol
+  analyseStock(raw.toUpperCase());
+}
+
+function showGroupPicker(data) {
+  const result = document.getElementById('analyse-result');
+  const stocks = data.results;
+  const label  = data.group || data.match_type;
+  const rows   = stocks.map(s => `
+    <div class="ac-item" style="cursor:pointer;border-bottom:1px solid var(--border)"
+         onclick="document.getElementById('sym-input').value='${s.symbol}'; analyseStock('${s.symbol}')">
+      <span class="ac-sym">${s.symbol}</span>
+      <span class="ac-name">${s.name}</span>
+      <span class="ac-sector">${s.sector}</span>
+    </div>`).join('');
+
+  result.innerHTML = `
+    <div class="card">
+      <div class="card-title">Select a stock — ${label}</div>
+      ${rows}
+    </div>`;
+}
+
+async function analyseStock(symbol) {
+  symbol = (symbol || document.getElementById('sym-input').value.trim()).toUpperCase();
+  if (!symbol) return;
+
+  const btn    = document.getElementById('analyse-btn');
+  const loader = document.getElementById('analyse-loader');
+  const errEl  = document.getElementById('analyse-error');
+  const result = document.getElementById('analyse-result');
+
+  btn.disabled = true;
+  loader.classList.add('show');
+  errEl.classList.remove('show');
+  result.innerHTML = '';
+  if (sparkChart) { sparkChart.destroy(); sparkChart = null; }
+
+  try {
+    const res  = await fetch(`/api/analyse/${symbol}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Unknown error');
+    renderAnalysis(data);
+    setContext(symbol);
+  } catch (e) {
+    errEl.textContent = `Error: ${e.message}`;
+    errEl.classList.add('show');
+  } finally {
+    btn.disabled = false;
+    loader.classList.remove('show');
+  }
+}
+
+function renderAnalysis(d) {
+  const q   = d.quote || {};
+  const pred = d.prediction || {};
+  const out  = d.outlook || {};
+  const news = d.news || {};
+  const ti   = pred.technical_indicators || {};
+  const ecr  = pred.expected_close_range || {};
+
+  let changeHtml = '';
+  if (q.current_price && q.previous_close) {
+    const chg = q.current_price - q.previous_close;
+    const pct = (chg / q.previous_close) * 100;
+    const cls = chg >= 0 ? 'up' : 'down';
+    changeHtml = `<span class="quote-change ${cls}">${chg >= 0 ? '+' : ''}${fmtPct(pct)}</span>`;
+  }
+
+  let rangeFill = 50;
+  if (ecr.low && ecr.high && q.current_price) {
+    const span = ecr.high - ecr.low;
+    rangeFill  = span > 0 ? Math.min(100, Math.max(0, ((q.current_price - ecr.low) / span) * 100)) : 50;
+  }
+
+  document.getElementById('analyse-result').innerHTML = `
+  <div class="card">
+    <div class="card-title">Live Quote</div>
+    <div class="quote-header">
+      <span class="quote-symbol">${d.symbol}</span>
+      <span class="quote-price">${fmt(q.current_price)}</span>
+      ${changeHtml}
+    </div>
+    <div class="quote-meta">
+      <div class="meta-item"><label>Day High</label><span>${fmt(q.day_high)}</span></div>
+      <div class="meta-item"><label>Day Low</label><span>${fmt(q.day_low)}</span></div>
+      <div class="meta-item"><label>Prev Close</label><span>${fmt(q.previous_close)}</span></div>
+      <div class="meta-item"><label>Volume</label><span>${fmtNum(q.volume)}</span></div>
+      <div class="meta-item"><label>Market Cap</label><span>${q.market_cap ? '₹' + (q.market_cap/1e7).toFixed(0) + ' Cr' : '—'}</span></div>
+      <div class="meta-item"><label>52W High</label><span>${fmt(q['52_week_high'])}</span></div>
+      <div class="meta-item"><label>52W Low</label><span>${fmt(q['52_week_low'])}</span></div>
+    </div>
+  </div>
+
+  ${d.history && d.history.length ? `
+  <div class="card">
+    <div class="card-title">Price — Last 30 Days</div>
+    <div class="chart-wrap"><canvas id="sparkline"></canvas></div>
+  </div>` : ''}
+
+  <div class="card">
+    <div class="card-title">Technical Indicators</div>
+    <div class="indicators">
+      <div class="indicator">
+        <label>RSI (14)</label>
+        <div class="val ${rsiClass(ti.RSI)}">${ti.RSI != null ? ti.RSI.toFixed(1) : '—'}</div>
+      </div>
+      <div class="indicator">
+        <label>MACD</label>
+        <div class="val ${ti.MACD >= 0 ? 'rsi-green' : 'rsi-red'}">${ti.MACD != null ? ti.MACD.toFixed(3) : '—'}</div>
+      </div>
+      <div class="indicator">
+        <label>SMA 5</label>
+        <div class="val">${fmt(ti.SMA_5)}</div>
+      </div>
+      <div class="indicator">
+        <label>SMA 20</label>
+        <div class="val">${fmt(ti.SMA_20)}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Outlook</div>
+    <div class="outlook-grid">
+      ${['short_term_1_3_days','medium_term_1_2_weeks','long_term_1_month'].map((k, i) => {
+        const labels = ['Short Term (1–3 days)', 'Medium Term (1–2 wks)', 'Long Term (1 month)'];
+        const o = out[k] || {};
+        return `<div class="outlook-card">
+          <div class="timeframe">${labels[i]}</div>
+          ${o.outlook ? outlookBadge(o.outlook) : '<span class="badge b-neutral">—</span>'}
+          <div class="conf">${o.confidence != null ? o.confidence.toFixed(1) + '% confidence' : ''}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>
+
+  ${ecr.low && ecr.high ? `
+  <div class="card">
+    <div class="card-title">Expected Close Range (Tomorrow)</div>
+    <div class="range-bar-wrap">
+      <div class="range-labels"><span>Low</span><span>Current</span><span>High</span></div>
+      <div class="range-track"><div class="range-fill" style="width:${rangeFill}%"></div></div>
+      <div class="range-values"><span>${fmt(ecr.low)}</span><span>${fmt(pred.current_price)}</span><span>${fmt(ecr.high)}</span></div>
+    </div>
+  </div>` : ''}
+
+  ${news.articles && news.articles.length ? `
+  <div class="card">
+    <div class="card-title">
+      News Sentiment
+      <span class="badge b-${news.sentiment_label === 'bullish' ? 'bullish' : news.sentiment_label === 'bearish' ? 'bearish' : 'neutral'}"
+            style="margin-left:8px;font-size:0.7rem">${news.sentiment_label}</span>
+    </div>
+    <ul class="news-list">
+      ${news.articles.map(a => `
+      <li class="news-item">
+        ${sentimentBadge(a.sentiment)}
+        <div>
+          <div class="news-title"><a href="${a.link}" target="_blank">${a.title}</a></div>
+          <div class="news-source">${a.source} · ${a.published ? a.published.slice(0,16) : ''}</div>
+        </div>
+      </li>`).join('')}
+    </ul>
+  </div>` : ''}
+
+  <div style="text-align:right;margin-top:8px">
+    <button class="secondary" onclick="switchTab('chat')" style="font-size:0.82rem;padding:8px 16px">
+      Chat about ${d.symbol} →
+    </button>
+  </div>
+  `;
+
+  if (d.history && d.history.length) {
+    const ctx    = document.getElementById('sparkline').getContext('2d');
+    const closes = d.history.map(h => h.close);
+    const labels = d.history.map(h => h.date);
+    const color  = closes[closes.length-1] >= closes[0] ? '#22c55e' : '#ef4444';
+    sparkChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels, datasets: [{ data: closes, borderColor: color, borderWidth: 2,
+        pointRadius: 0, fill: true, backgroundColor: color + '18', tension: 0.3 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: '#2a2d3e' }, ticks: { color: '#8892a4', maxTicksLimit: 6, font: { size: 10 } } },
+          y: { grid: { color: '#2a2d3e' }, ticks: { color: '#8892a4', font: { size: 10 },
+               callback: v => '₹' + v.toLocaleString('en-IN') } }
+        }
+      }
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════
+   Scanner
+══════════════════════════════════════════════ */
+async function runScan() {
+  const btn    = document.getElementById('scan-btn');
+  const loader = document.getElementById('scan-loader');
+  const errEl  = document.getElementById('scan-error');
+  const result = document.getElementById('scan-result');
+  const status = document.getElementById('scan-status');
+
+  btn.disabled = true;
+  loader.classList.add('show');
+  errEl.classList.remove('show');
+  result.innerHTML = '';
+  status.textContent = 'Scanning — please wait…';
+
+  try {
+    const res  = await fetch('/api/scan');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Unknown error');
+    renderScan(data);
+    status.textContent = `Found ${data.total} stocks · ${data.stocks.filter(s => s.max_move_pct >= 3).length} likely to move ≥3%`;
+  } catch (e) {
+    errEl.textContent = `Error: ${e.message}`;
+    errEl.classList.add('show');
+    status.textContent = '';
+  } finally {
+    btn.disabled = false;
+    loader.classList.remove('show');
+  }
+}
+
+function renderScan(data) {
+  if (!data.stocks || !data.stocks.length) {
+    document.getElementById('scan-result').innerHTML = '<p style="color:var(--muted)">No data returned.</p>';
+    return;
+  }
+  const rows = data.stocks.map(s => {
+    const hl        = s.max_move_pct >= 3 ? 'mover-highlight' : '';
+    const moveStyle = s.max_move_pct >= 3 ? 'style="color:var(--green);font-weight:700"' : '';
+    return `<tr class="${hl}">
+      <td class="tbl-symbol" onclick="jumpToAnalyse('${s.symbol}')">${s.symbol}</td>
+      <td>${fmt(s.current_price)}</td>
+      <td>${fmtPct(s.pct_low)} / ${fmtPct(s.pct_high)}</td>
+      <td ${moveStyle}>${s.max_move_pct.toFixed(1)}%</td>
+      <td class="${rsiClass(s.rsi)}">${s.rsi != null ? s.rsi.toFixed(1) : '—'}</td>
+      <td>${outlookBadge(s.short_outlook)}</td>
+      <td>${sentimentBadge(s.news_sentiment)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('scan-result').innerHTML = `
+  <table>
+    <thead><tr>
+      <th>Symbol</th><th>Price</th><th>Expected (Low / High)</th>
+      <th>Max Move</th><th>RSI</th><th>Short Outlook</th><th>News</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function jumpToAnalyse(symbol) {
+  switchTab('analyse');
+  document.getElementById('sym-input').value = symbol;
+  analyseStock(symbol);
+}
+
+/* ══════════════════════════════════════════════
+   Chat
+══════════════════════════════════════════════ */
+function setContext(symbol) {
+  currentSymbol = symbol;
+  const el = document.getElementById('chat-context-display');
+  el.innerHTML = `<span class="context-chip">
+    ${symbol}
+    <button onclick="clearContext()" title="Remove context">×</button>
+  </span>`;
+}
+
+function clearContext() {
+  currentSymbol = '';
+  const el = document.getElementById('chat-context-display');
+  el.innerHTML = `<span class="no-context">None — analyse a stock to set context automatically</span>`;
+}
+
+function clearChat() {
+  chatHistory = [];
+  const msgs = document.getElementById('chat-messages');
+  msgs.innerHTML = `<div id="chat-empty">
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:16px;">
+      Ask Artha anything about Indian stocks. Go to <strong>Analyse Stock</strong> first to set context, or ask a general question.
+    </p>
+    <div class="chat-suggestions" id="chat-suggestions">
+      <span class="suggestion" onclick="sendSuggestion(this)">What does the RSI tell me?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Is this a good time to buy?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Explain the MACD signal</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">What are the short-term risks?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">How does news sentiment affect price?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Compare short-term and long-term outlook</span>
+    </div>
+  </div>`;
+}
+
+function sendSuggestion(el) {
+  document.getElementById('chat-input').value = el.textContent;
+  sendChat();
+}
+
+function appendMsg(role, content) {
+  // Remove empty state
+  const empty = document.getElementById('chat-empty');
+  if (empty) empty.remove();
+
+  const msgs = document.getElementById('chat-messages');
+  const div  = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `
+    <div class="msg-label">${role === 'user' ? 'You' : 'Artha'}</div>
+    <div class="msg-bubble">${content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return div;
+}
+
+function appendTyping() {
+  const empty = document.getElementById('chat-empty');
+  if (empty) empty.remove();
+
+  const msgs = document.getElementById('chat-messages');
+  const div  = document.createElement('div');
+  div.className = 'msg artha';
+  div.id = 'typing-bubble';
+  div.innerHTML = `
+    <div class="msg-label">Artha</div>
+    <div class="msg-bubble">
+      <div class="typing-indicator">
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+        <div class="typing-dot"></div>
+      </div>
+    </div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const btn   = document.getElementById('chat-send-btn');
+  const msg   = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  btn.disabled = true;
+  appendMsg('user', msg);
+  appendTyping();
+
+  chatHistory.push({ role: 'user', content: msg });
+
+  try {
+    const res  = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: msg,
+        context_symbol: currentSymbol,
+        history: chatHistory.slice(-10),
+      })
+    });
+    const data = await res.json();
+
+    document.getElementById('typing-bubble')?.remove();
+
+    if (!res.ok) {
+      const errMsg = data.detail || 'Something went wrong.';
+      appendMsg('artha', errMsg);
+      // If Ollama not running, show helpful tip
+      if (errMsg.includes('ollama serve') || errMsg.includes('not running')) {
+        const msgs = document.getElementById('chat-messages');
+        const tip  = document.createElement('div');
+        tip.style.cssText = 'color:var(--yellow);font-size:0.8rem;padding:8px 16px;background:#1c1408;border-radius:8px;margin:0 0 8px';
+        tip.textContent   = '💡 Tip: Open a terminal and run: ollama serve';
+        msgs.appendChild(tip);
+        msgs.scrollTop = msgs.scrollHeight;
+      }
+      return;
+    }
+
+    const reply = data.reply || '…';
+    appendMsg('artha', reply);
+    chatHistory.push({ role: 'assistant', content: reply });
+
+    // Update context if Ollama resolved a different symbol
+    if (data.symbol_used && data.symbol_used !== currentSymbol) {
+      setContext(data.symbol_used);
+    }
+  } catch (e) {
+    document.getElementById('typing-bubble')?.remove();
+    appendMsg('artha', `Connection error: ${e.message}`);
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+}
+
+/* ══════════════════════════════════════════════
+   Init
+══════════════════════════════════════════════ */
+window.onload = () => document.getElementById('sym-input').focus();
+</script>
+</body>
+</html>
