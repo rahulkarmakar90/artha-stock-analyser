@@ -12,7 +12,9 @@ A local-first stock analysis tool for Indian markets. No cloud, no API keys, no 
 
 ## What it does
 
-- **Analyse any NSE stock** — live price, RSI, MACD, moving averages, Bollinger Bands, expected price range, and short/medium/long-term outlook
+- **Analyse any NSE or BSE stock** — live price, RSI, MACD, moving averages, Bollinger Bands, expected price range, and short/medium/long-term outlook
+- **ML predictions** — four models (Linear Regression, Random Forest, Gradient Boosting, Gaussian Naive Bayes) trained on 5 years of daily data give direction + confidence on each analysis
+- **Walk-forward backtesting** — validate any stock's ML accuracy over its full history: direction accuracy, range accuracy, cumulative returns vs buy-and-hold, and feature contribution
 - **Smart search** — type a company name, abbreviation, sector, or index and it figures out what you mean (fuzzy matching included)
 - **News sentiment** — fetches recent headlines from Google News and scores them automatically
 - **Nifty 50 Scanner** — one click scans all 50 stocks and surfaces the ones most likely to move, sorted by expected move %
@@ -22,9 +24,9 @@ A local-first stock analysis tool for Indian markets. No cloud, no API keys, no 
 
 ## Screenshots
 
-| Analyse Stock | Nifty 50 Scanner | Chat |
-|---|---|---|
-| Live quote, 30-day chart, technical indicators, outlook cards, news | Table of all 50 stocks ranked by expected move, ≥3% movers highlighted | Conversational Q&A with full live stock data as context |
+| Analyse Stock | ML Predictions | Nifty 50 Scanner | Chat |
+|---|---|---|---|
+| Live quote, 30-day chart, technical indicators, outlook cards, news | 4 ML models + feature importance chart + collapsible backtest | Table of all 50 stocks ranked by expected move, ≥3% movers highlighted | Conversational Q&A with full live stock data as context |
 
 ---
 
@@ -99,20 +101,27 @@ The search bar accepts natural language — you don't need to know the exact NSE
                      │ HTTP
 ┌────────────────────▼────────────────────────────────┐
 │               FastAPI Server (api.py)                │
-│  /api/analyse  /api/scan  /api/search  /api/chat    │
+│  /api/analyse  /api/scan  /api/search               │
+│  /api/chat     /api/backtest/{symbol}               │
 └──────┬──────────────┬──────────────┬────────────────┘
        │              │              │
 ┌──────▼──────┐ ┌─────▼──────┐ ┌────▼──────────────┐
 │ data_fetcher│ │ technical_ │ │   news_fetcher.py  │
 │    .py      │ │ analysis.py│ │ Google News + NLP  │
-│ Yahoo Fin.  │ │RSI MACD SMA│ │   TextBlob         │
+│ NSE + BSE   │ │RSI MACD SMA│ │   TextBlob         │
 └─────────────┘ └────────────┘ └────────────────────┘
        │
-┌──────▼──────────────────┐    ┌───────────────────┐
-│  stock_registry.py      │    │  Ollama (local)   │
-│  ~120 stocks, aliases,  │    │  llama3.2 model   │
-│  sectors, fuzzy search  │    │  Chat endpoint    │
-└─────────────────────────┘    └───────────────────┘
+┌──────▼──────────────────┐    ┌───────────────────────┐
+│  ml_analysis.py          │    │  Ollama (local)       │
+│  Linear Regression       │    │  llama3.2 model       │
+│  Random Forest           │    │  Chat endpoint        │
+│  Gradient Boosting       │    └───────────────────────┘
+│  Gaussian Naive Bayes    │
+│  Walk-forward Backtester │    ┌───────────────────────┐
+└──────────────────────────┘    │  stock_registry.py    │
+                                │  ~120 stocks, aliases │
+                                │  sectors, fuzzy search│
+                                └───────────────────────┘
 ```
 
 ### Technical Indicators
@@ -124,7 +133,7 @@ The search bar accepts natural language — you don't need to know the exact NSE
 | **SMA 5 / SMA 20** | Short vs medium-term trend direction |
 | **Bollinger Bands** | Price volatility envelope (used in prediction) |
 
-### Price Prediction Formula
+### Heuristic Price Prediction
 
 The expected close range combines three signals:
 
@@ -133,7 +142,30 @@ combined_signal = (SMA_trend × 0.4) + (RSI_signal × 0.3) + (news_sentiment × 
 expected_move   = combined_signal × volatility × current_price × 2
 ```
 
-This is a heuristic estimate, not a trained ML model. See [PRODUCT_SPEC.md](PRODUCT_SPEC.md) for full details.
+### ML Direction Prediction
+
+Four models are trained on 5 years of daily OHLCV data (11 engineered features):
+
+| Model | Output |
+|---|---|
+| **Linear Regression** | Predicted next-day price (continuous) |
+| **Random Forest** | Direction (up/neutral/down) + probability + feature importances |
+| **Gradient Boosting** | Direction + probability |
+| **Gaussian Naive Bayes** | Direction + per-feature likelihood (Bayesian) |
+| **Ensemble** | Averaged RF + GB probabilities |
+
+Features: RSI, MACD, BB_position, SMA_ratio, volume_ratio, return_1d/5d/20d, volatility
+
+### Walk-Forward Backtesting
+
+Rolling 252-day training window over full 5-year history. Metrics reported:
+- Direction accuracy % (up/neutral/down)
+- Range accuracy % (actual close inside predicted ±1.96σ band)
+- Cumulative strategy return vs buy-and-hold
+- Alpha (strategy − buy-and-hold)
+- Feature importances from final RF fit
+
+See [PRODUCT_SPEC.md](PRODUCT_SPEC.md) for full details.
 
 ---
 
@@ -142,8 +174,9 @@ This is a heuristic estimate, not a trained ML model. See [PRODUCT_SPEC.md](PROD
 ```
 artha-stock-analyser/
 ├── api.py                  # FastAPI server — all endpoints
-├── data_fetcher.py         # Yahoo Finance data fetching
+├── data_fetcher.py         # Yahoo Finance, NSE + BSE auto-detection
 ├── technical_analysis.py   # RSI, MACD, SMA, price prediction, outlook
+├── ml_analysis.py          # ML models + walk-forward backtester
 ├── news_fetcher.py         # Google News RSS + TextBlob sentiment
 ├── stock_registry.py       # ~120 stock registry, fuzzy resolver
 ├── requirements.txt        # Python dependencies
@@ -160,9 +193,10 @@ artha-stock-analyser/
 | Endpoint | Method | Description |
 |---|---|---|
 | `/` | GET | Serves the web UI |
-| `/api/analyse/{symbol}` | GET | Full analysis for a stock |
+| `/api/analyse/{symbol}` | GET | Full analysis for a stock (heuristic + 4 ML models) |
 | `/api/search?q=...` | GET | Resolve any text to a stock or list |
 | `/api/scan` | GET | Scan Nifty 50 for top movers |
+| `/api/backtest/{symbol}` | GET | Walk-forward backtest over 5y history |
 | `/api/chat` | POST | Chat with local LLM about a stock |
 
 ---

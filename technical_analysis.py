@@ -1,11 +1,9 @@
 import pandas as pd
 import numpy as np
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import MinMaxScaler
 
 class StockPredictor:
     def __init__(self):
-        self.scaler = MinMaxScaler()
+        pass
     
     def calculate_technical_indicators(self, df: pd.DataFrame):
         """Calculate technical indicators"""

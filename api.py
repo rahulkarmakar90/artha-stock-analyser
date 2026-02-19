@@ -21,14 +21,16 @@ from data_fetcher import StockDataFetcher
 from technical_analysis import StockPredictor
 from news_fetcher import NewsAnalyzer
 from stock_registry import resolve, get_sector_list, get_index_list
+from ml_analysis import MLAnalyzer, WalkForwardBacktester
 import feedparser
 from textblob import TextBlob
 
 app = FastAPI(title="Artha — Indian Stock Analyser")
 
-fetcher = StockDataFetcher()
-predictor = StockPredictor()
+fetcher      = StockDataFetcher()
+predictor    = StockPredictor()
 news_analyzer = NewsAnalyzer()
+ml_analyzer  = MLAnalyzer()
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -87,6 +89,22 @@ def _safe_float(val):
         return None
 
 
+def _sanitise_ml_result(obj):
+    """Recursively convert numpy scalars to Python native types for JSON serialisation."""
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: _sanitise_ml_result(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitise_ml_result(v) for v in obj]
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.ndarray,)):
+        return obj.tolist()
+    return obj
+
+
 @app.get("/")
 def root():
     return FileResponse(str(STATIC_DIR / "index.html"))
@@ -96,14 +114,17 @@ def root():
 def analyse(symbol: str):
     symbol = symbol.upper().strip()
     try:
-        # Historical data (3 months)
-        df = fetcher.get_stock_data(symbol, period="3mo", interval="1d")
-        if df is None or len(df) < 5:
+        # Fetch 5 years of data (superset of 3mo — no second network call needed)
+        df_5y, exchange = fetcher.get_stock_data_with_exchange(symbol, period="5y", interval="1d")
+        if df_5y is None or len(df_5y) < 5:
             raise HTTPException(status_code=404, detail=f"No data found for {symbol}")
+
+        # Use last 65 trading days (~3 months) for heuristic indicators & sparkline
+        df = df_5y.tail(65)
 
         # Realtime quote
         try:
-            quote = fetcher.get_realtime_quote(symbol)
+            quote = fetcher.get_realtime_quote(symbol, exchange=exchange)
             quote = {k: _safe_float(v) if isinstance(v, (int, float)) else v
                      for k, v in quote.items()}
         except Exception:
@@ -111,8 +132,7 @@ def analyse(symbol: str):
 
         # Price history for sparkline (last 30 days)
         history = []
-        hist_df = df.tail(30)
-        for dt, row in hist_df.iterrows():
+        for dt, row in df.tail(30).iterrows():
             history.append({
                 "date": str(dt)[:10],
                 "close": round(float(row["Close"]), 2),
@@ -121,12 +141,11 @@ def analyse(symbol: str):
         # News sentiment
         sentiment_score, sentiment_label, articles = _get_sentiment(symbol)
 
-        # Technical prediction
+        # Heuristic technical prediction (uses 3mo slice)
         pred = predictor.predict_price_range(df, news_sentiment=sentiment_score)
         outlook = predictor.get_outlook(df, news_sentiment=sentiment_score)
 
         if pred:
-            # Sanitise numpy types
             pred["current_price"] = _safe_float(pred["current_price"])
             pred["expected_close_range"]["low"] = _safe_float(pred["expected_close_range"]["low"])
             pred["expected_close_range"]["high"] = _safe_float(pred["expected_close_range"]["high"])
@@ -139,8 +158,17 @@ def analyse(symbol: str):
             for timeframe in outlook.values():
                 timeframe["confidence"] = _safe_float(timeframe["confidence"])
 
+        # ML predictions (uses full 5y data)
+        ml_result = None
+        try:
+            ml_result = ml_analyzer.run_all(df_5y)
+            ml_result = _sanitise_ml_result(ml_result)
+        except Exception as e:
+            ml_result = {"error": str(e)}
+
         return {
             "symbol": symbol,
+            "exchange": exchange,
             "quote": quote,
             "history": history,
             "prediction": pred,
@@ -150,6 +178,7 @@ def analyse(symbol: str):
                 "sentiment_label": sentiment_label,
                 "articles": articles[:8],
             },
+            "ml": ml_result,
         }
     except HTTPException:
         raise
@@ -203,6 +232,27 @@ def scan():
     return {"stocks": results, "total": len(results)}
 
 
+# ── Backtest endpoint ─────────────────────────────────────────────────────
+
+@app.get("/api/backtest/{symbol}")
+def backtest(symbol: str):
+    symbol = symbol.upper().strip()
+    try:
+        df_5y, exchange = fetcher.get_stock_data_with_exchange(symbol, period="5y", interval="1d")
+        if df_5y is None or len(df_5y) < 300:
+            raise HTTPException(status_code=404,
+                detail=f"Insufficient data for {symbol} — need ~5 years of history")
+        result = WalkForwardBacktester().run(df_5y, ml_analyzer)
+        result = _sanitise_ml_result(result)
+        result["symbol"]   = symbol
+        result["exchange"] = exchange
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Search endpoint ────────────────────────────────────────────────────────
 
 @app.get("/api/search")
@@ -227,13 +277,13 @@ class ChatRequest(BaseModel):
 def _build_stock_context(symbol: str) -> str:
     """Fetch quick analysis data and format as plain text for the LLM prompt."""
     try:
-        df = fetcher.get_stock_data(symbol, period="3mo", interval="1d")
+        df, exchange = fetcher.get_stock_data_with_exchange(symbol, period="3mo", interval="1d")
         if df is None or len(df) < 5:
             return f"No data available for {symbol}."
 
         quote = {}
         try:
-            quote = fetcher.get_realtime_quote(symbol)
+            quote = fetcher.get_realtime_quote(symbol, exchange=exchange)
         except Exception:
             pass
 

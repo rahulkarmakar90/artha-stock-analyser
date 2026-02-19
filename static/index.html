@@ -288,6 +288,49 @@
     .tabs  { padding: 0 16px; }
     .msg   { max-width: 95%; }
   }
+
+  /* ── Exchange badge ── */
+  .exchange-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px;
+    margin-left: 10px; vertical-align: middle;
+  }
+  .exchange-nse { background: #0d2847; color: #60a5fa; }
+  .exchange-bse { background: #1a0d2e; color: #c084fc; }
+  .exchange-unknown { background: var(--border); color: var(--muted); }
+
+  /* ── ML predictions card ── */
+  .ml-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .ml-model-box { background: var(--bg); border-radius: 8px; padding: 16px; }
+  .ml-model-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .ml-direction { font-size: 1.25rem; font-weight: 700; margin-bottom: 8px; }
+  .ml-prob-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.78rem; }
+  .ml-prob-row .prob-label { width: 52px; color: var(--muted); }
+  .ml-prob-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .ml-prob-fill-up      { height: 100%; background: var(--green); border-radius: 3px; }
+  .ml-prob-fill-down    { height: 100%; background: var(--red);   border-radius: 3px; }
+  .ml-prob-fill-neutral { height: 100%; background: var(--yellow);border-radius: 3px; }
+  .prob-val { width: 40px; text-align: right; font-weight: 600; }
+
+  /* ── Feature importance chart ── */
+  .fi-chart-wrap { height: 240px; margin-top: 8px; }
+
+  /* ── Backtest collapsible ── */
+  .collapsible-header {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none;
+  }
+  .toggle-icon { font-size: 0.75rem; color: var(--muted); transition: transform 0.2s; display: inline-block; }
+  .toggle-icon.open { transform: rotate(180deg); }
+  .collapsible-body { display: none; margin-top: 20px; }
+  .collapsible-body.open { display: block; }
+  .backtest-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .bt-metric { background: var(--bg); border-radius: 8px; padding: 14px; }
+  .bt-metric label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px; }
+  .bt-metric .bt-val { font-size: 1.35rem; font-weight: 700; }
+  .bt-positive { color: var(--green); }
+  .bt-negative { color: var(--red);   }
+  .bt-neutral  { color: var(--yellow);}
 </style>
 </head>
 <body>
@@ -376,6 +419,7 @@
    State
 ══════════════════════════════════════════════ */
 let currentSymbol   = '';   // set when a stock is analysed
+let fiChart         = null; // feature importance chart
 let chatHistory     = [];   // [{role, content}]
 let acResults       = [];   // current autocomplete results
 let acFocusIdx      = -1;   // keyboard nav index
@@ -441,12 +485,14 @@ function renderAC(data) {
   const groupName = data.group ? ` — ${data.group}` : '';
   const headerTxt = isGroup
     ? `${data.match_type === 'index' ? 'Index' : 'Sector'} match${groupName} (${acResults.length} stocks)`
-    : (data.match_type === 'fuzzy' ? 'Did you mean…' : 'Match found');
+    : (data.match_type === 'fuzzy' ? 'Did you mean…'
+       : data.match_type === 'direct' ? 'Analyse directly (NSE / BSE auto-detect)'
+       : 'Match found');
 
   const items = acResults.slice(0, isGroup ? 8 : 6).map((r, i) => `
     <div class="ac-item" data-idx="${i}" onmousedown="selectAC(${i})">
       <span class="ac-sym">${r.symbol}</span>
-      <span class="ac-name">${r.name}</span>
+      <span class="ac-name">${data.match_type === 'direct' ? 'NSE / BSE auto-detect' : r.name}</span>
       <span class="ac-sector">${r.sector}</span>
     </div>`).join('');
 
@@ -556,6 +602,7 @@ async function analyseStock(symbol) {
   errEl.classList.remove('show');
   result.innerHTML = '';
   if (sparkChart) { sparkChart.destroy(); sparkChart = null; }
+  if (fiChart)    { fiChart.destroy();    fiChart    = null; }
 
   try {
     const res  = await fetch(`/api/analyse/${symbol}`);
@@ -580,6 +627,10 @@ function renderAnalysis(d) {
   const ti   = pred.technical_indicators || {};
   const ecr  = pred.expected_close_range || {};
 
+  // Exchange badge
+  const exCls = d.exchange === 'NSE' ? 'exchange-nse' : d.exchange === 'BSE' ? 'exchange-bse' : 'exchange-unknown';
+  const exBadge = d.exchange ? `<span class="exchange-badge ${exCls}">${d.exchange}</span>` : '';
+
   let changeHtml = '';
   if (q.current_price && q.previous_close) {
     const chg = q.current_price - q.previous_close;
@@ -598,7 +649,7 @@ function renderAnalysis(d) {
   <div class="card">
     <div class="card-title">Live Quote</div>
     <div class="quote-header">
-      <span class="quote-symbol">${d.symbol}</span>
+      <span class="quote-symbol">${d.symbol}${exBadge}</span>
       <span class="quote-price">${fmt(q.current_price)}</span>
       ${changeHtml}
     </div>
@@ -685,12 +736,36 @@ function renderAnalysis(d) {
     </ul>
   </div>` : ''}
 
+  ${d.ml && !d.ml.error ? renderMLCard(d) : ''}
+
+  <div class="card" id="backtest-card">
+    <div class="collapsible-header" onclick="toggleBacktest('${d.symbol}')">
+      <div class="card-title" style="margin-bottom:0">Walk-Forward Backtest (5-year validation)</div>
+      <span class="toggle-icon" id="bt-toggle-icon">▼</span>
+    </div>
+    <div class="collapsible-body" id="backtest-body">
+      <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">
+        Trains a Random Forest on rolling 252-day windows, predicts 1 day ahead, and validates
+        across ~1000 test days. Takes ~60–90 seconds.
+      </p>
+      <button onclick="loadBacktest('${d.symbol}')" style="padding:8px 20px;font-size:0.82rem">
+        Run Backtest
+      </button>
+      <div id="backtest-result" style="margin-top:20px"></div>
+    </div>
+  </div>
+
   <div style="text-align:right;margin-top:8px">
     <button class="secondary" onclick="switchTab('chat')" style="font-size:0.82rem;padding:8px 16px">
       Chat about ${d.symbol} →
     </button>
   </div>
   `;
+
+  // Feature importance chart (rendered after DOM settles)
+  if (d.ml && d.ml.random_forest && d.ml.random_forest.feature_importances) {
+    setTimeout(() => renderFeatureImportanceChart(d.ml.random_forest.feature_importances), 50);
+  }
 
   if (d.history && d.history.length) {
     const ctx    = document.getElementById('sparkline').getContext('2d');
@@ -915,6 +990,218 @@ async function sendChat() {
   } finally {
     btn.disabled = false;
     input.focus();
+  }
+}
+
+/* ══════════════════════════════════════════════
+   ML Rendering
+══════════════════════════════════════════════ */
+
+function mlDirHtml(direction) {
+  if (direction === 1)  return '<span style="color:var(--green);font-weight:700">▲ UP</span>';
+  if (direction === -1) return '<span style="color:var(--red);font-weight:700">▼ DOWN</span>';
+  return '<span style="color:var(--yellow);font-weight:700">— NEUTRAL</span>';
+}
+
+function mlProbBars(pUp, pDown, pNeutral) {
+  const pct = v => Math.round((v || 0) * 100);
+  const val = v => ((v || 0) * 100).toFixed(1) + '%';
+  return `
+    <div class="ml-prob-row">
+      <span class="prob-label">Up</span>
+      <div class="ml-prob-track"><div class="ml-prob-fill-up" style="width:${pct(pUp)}%"></div></div>
+      <span class="prob-val" style="color:var(--green)">${val(pUp)}</span>
+    </div>
+    <div class="ml-prob-row">
+      <span class="prob-label">Neutral</span>
+      <div class="ml-prob-track"><div class="ml-prob-fill-neutral" style="width:${pct(pNeutral)}%"></div></div>
+      <span class="prob-val" style="color:var(--yellow)">${val(pNeutral)}</span>
+    </div>
+    <div class="ml-prob-row">
+      <span class="prob-label">Down</span>
+      <div class="ml-prob-track"><div class="ml-prob-fill-down" style="width:${pct(pDown)}%"></div></div>
+      <span class="prob-val" style="color:var(--red)">${val(pDown)}</span>
+    </div>`;
+}
+
+function renderMLCard(d) {
+  const ml  = d.ml || {};
+  const rf  = ml.random_forest      || {};
+  const gb  = ml.gradient_boosting  || {};
+  const gnb = ml.bayesian           || {};
+  const lr  = ml.linear_regression  || {};
+  const ens = ml.ensemble           || {};
+
+  return `
+  <div class="card">
+    <div class="card-title">ML Predictions <span style="color:var(--muted);font-size:0.65rem;font-weight:400;text-transform:none">&nbsp;trained on 5 years of data</span></div>
+    <div class="ml-grid">
+
+      <div class="ml-model-box">
+        <div class="ml-model-label">Random Forest</div>
+        <div class="ml-direction">${mlDirHtml(rf.direction)} <span style="font-size:0.8rem;color:var(--muted);font-weight:400">${rf.confidence != null ? rf.confidence.toFixed(1)+'% conf' : ''}</span></div>
+        ${mlProbBars(rf.prob_up, rf.prob_down, rf.prob_neutral)}
+      </div>
+
+      <div class="ml-model-box">
+        <div class="ml-model-label">Bayesian (Gaussian Naive Bayes)</div>
+        <div class="ml-direction">${mlDirHtml(gnb.direction)}</div>
+        ${mlProbBars(gnb.prob_up, gnb.prob_down, gnb.prob_neutral)}
+      </div>
+
+      <div class="ml-model-box">
+        <div class="ml-model-label">Ensemble (RF + Gradient Boosting)</div>
+        <div class="ml-direction">${mlDirHtml(ens.direction)} <span style="font-size:0.8rem;color:var(--muted);font-weight:400">${ens.confidence != null ? ens.confidence.toFixed(1)+'% conf' : ''}</span></div>
+        ${mlProbBars(ens.prob_up, ens.prob_down, ens.prob_neutral)}
+      </div>
+
+      <div class="ml-model-box">
+        <div class="ml-model-label">Linear Regression Target</div>
+        <div class="ml-direction" style="font-size:1.1rem">${lr.predicted_price ? fmt(lr.predicted_price) : '—'}</div>
+        <div style="font-size:0.82rem;color:var(--muted);margin-top:6px">
+          Expected return:&nbsp;
+          <span style="font-weight:700;color:${(lr.predicted_return_pct||0)>=0?'var(--green)':'var(--red)'}">
+            ${lr.predicted_return_pct != null
+              ? ((lr.predicted_return_pct*100)>=0?'+':'') + (lr.predicted_return_pct*100).toFixed(2)+'%'
+              : '—'}
+          </span>
+        </div>
+        <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">
+          Train R²:&nbsp;${lr.model_r2_train != null ? lr.model_r2_train.toFixed(3) : '—'}
+        </div>
+      </div>
+
+    </div>
+
+    ${rf.feature_importances ? `
+    <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:16px">
+      <div class="card-title" style="margin-bottom:8px">Feature Importance (Random Forest)</div>
+      <div class="fi-chart-wrap"><canvas id="fi-chart"></canvas></div>
+    </div>` : ''}
+  </div>`;
+}
+
+function renderFeatureImportanceChart(importances) {
+  const canvas = document.getElementById('fi-chart');
+  if (!canvas) return;
+  if (fiChart) { fiChart.destroy(); fiChart = null; }
+
+  const sorted = Object.entries(importances).sort((a, b) => b[1] - a[1]);
+  const labels = sorted.map(([k]) => k.replace(/_/g, ' '));
+  const values = sorted.map(([, v]) => +(v * 100).toFixed(2));
+
+  fiChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: '#6c63ff55',
+        borderColor: '#6c63ff',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: '#2a2d3e' }, ticks: { color: '#8892a4', callback: v => v + '%', font: { size: 10 } } },
+        y: { grid: { color: '#2a2d3e' }, ticks: { color: '#e2e8f0', font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════
+   Backtest
+══════════════════════════════════════════════ */
+
+function toggleBacktest(symbol) {
+  const icon = document.getElementById('bt-toggle-icon');
+  const body = document.getElementById('backtest-body');
+  icon.classList.toggle('open');
+  body.classList.toggle('open');
+}
+
+async function loadBacktest(symbol) {
+  const el = document.getElementById('backtest-result');
+  el.innerHTML = `<div class="loader show" style="padding:24px 0"><div class="spinner"></div>Running walk-forward backtest — please wait (~60–90s)…</div>`;
+  try {
+    const res  = await fetch(`/api/backtest/${symbol}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Unknown error');
+    renderBacktestResult(data);
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--red);font-size:0.88rem">Error: ${e.message}</p>`;
+  }
+}
+
+function renderBacktestResult(bt) {
+  const pct  = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : '—';
+  const cls  = v => v == null ? '' : v >= 0 ? 'bt-positive' : 'bt-negative';
+  const accCls = v => v == null ? '' : v >= 50 ? 'bt-positive' : 'bt-negative';
+
+  document.getElementById('backtest-result').innerHTML = `
+  <div class="backtest-metrics">
+    <div class="bt-metric">
+      <label>Direction Accuracy</label>
+      <div class="bt-val ${accCls(bt.direction_accuracy_pct)}">${bt.direction_accuracy_pct != null ? bt.direction_accuracy_pct.toFixed(1)+'%' : '—'}</div>
+    </div>
+    <div class="bt-metric">
+      <label>Range Accuracy</label>
+      <div class="bt-val">${bt.range_accuracy_pct != null ? bt.range_accuracy_pct.toFixed(1)+'%' : '—'}</div>
+    </div>
+    <div class="bt-metric">
+      <label>Strategy Return</label>
+      <div class="bt-val ${cls(bt.cumulative_strategy_return_pct)}">${pct(bt.cumulative_strategy_return_pct)}</div>
+    </div>
+    <div class="bt-metric">
+      <label>Buy & Hold Return</label>
+      <div class="bt-val ${cls(bt.cumulative_bnh_return_pct)}">${pct(bt.cumulative_bnh_return_pct)}</div>
+    </div>
+    <div class="bt-metric">
+      <label>Alpha vs B&H</label>
+      <div class="bt-val ${cls(bt.alpha_pct)}">${pct(bt.alpha_pct)}</div>
+    </div>
+    <div class="bt-metric">
+      <label>Test Days</label>
+      <div class="bt-val bt-neutral">${bt.n_test_days || '—'}</div>
+    </div>
+    <div class="bt-metric">
+      <label>Trades Taken</label>
+      <div class="bt-val bt-neutral">${bt.n_trades || '—'}</div>
+    </div>
+  </div>
+  ${bt.feature_importances ? `
+  <div style="margin-top:4px">
+    <div class="card-title" style="margin-bottom:8px">Feature Contribution (Backtest RF)</div>
+    <div class="fi-chart-wrap"><canvas id="bt-fi-chart"></canvas></div>
+  </div>` : ''}
+  `;
+
+  if (bt.feature_importances) {
+    const canvas = document.getElementById('bt-fi-chart');
+    if (canvas) {
+      const sorted = Object.entries(bt.feature_importances).sort((a, b) => b[1] - a[1]);
+      new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: sorted.map(([k]) => k.replace(/_/g, ' ')),
+          datasets: [{ data: sorted.map(([, v]) => +(v * 100).toFixed(2)),
+            backgroundColor: '#22c55e44', borderColor: '#22c55e', borderWidth: 1, borderRadius: 4 }]
+        },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: '#2a2d3e' }, ticks: { color: '#8892a4', callback: v => v+'%', font: { size: 10 } } },
+            y: { grid: { color: '#2a2d3e' }, ticks: { color: '#e2e8f0', font: { size: 11 } } }
+          }
+        }
+      });
+    }
   }
 }
 

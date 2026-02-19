@@ -400,6 +400,18 @@ def resolve(query: str) -> dict:
             return {"type": "single", "results": results, "match_type": "fuzzy"}
         return {"type": "list", "results": results, "match_type": "fuzzy"}
 
+    # 6. Raw symbol fallback — if query looks like a ticker, let the analyse
+    #    endpoint try NSE then BSE directly (supports any BSE/NSE symbol not
+    #    in the registry, including BSE numeric codes like "500325")
+    import re
+    clean = query.strip().upper().replace(" ", "")
+    if re.match(r'^[A-Z0-9&.\-]{1,20}$', clean):
+        return {
+            "type": "single",
+            "results": [{"symbol": clean, "name": clean, "sector": "", "indices": []}],
+            "match_type": "direct",
+        }
+
     return {"type": "none", "results": [], "match_type": "none"}
 
 
