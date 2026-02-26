@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Artha — Indian Stock Analyser</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.umd.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -153,7 +154,21 @@
   .range-fill     { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6c63ff, #22c55e); }
   .range-values   { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; margin-top: 6px; }
 
-  .chart-wrap { height: 200px; margin-top: 4px; }
+  .chart-wrap { height: 240px; margin-top: 4px; }
+  .chart-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .toggle-group { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  .toggle-btn { padding: 5px 13px; font-size: 0.78rem; font-weight: 600; background: var(--bg);
+    color: var(--muted); border: none; border-right: 1px solid var(--border);
+    cursor: pointer; transition: all 0.15s; }
+  .toggle-btn:last-child { border-right: none; }
+  .toggle-btn.active { background: var(--accent); color: #fff; }
+  .toggle-btn:hover:not(.active) { color: var(--text); }
+  .custom-days-wrap { display: none; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+  .custom-days-wrap.show { display: flex; }
+  .custom-days-wrap input[type=range] { width: 90px; accent-color: var(--accent); }
+  .custom-days-wrap input[type=number] { width: 48px; padding: 4px 6px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg); color: var(--text);
+    font-size: 0.8rem; text-align: center; }
 
   .news-list  { list-style: none; }
   .news-item  {
@@ -425,6 +440,10 @@ let acResults       = [];   // current autocomplete results
 let acFocusIdx      = -1;   // keyboard nav index
 let acDebounce      = null;
 let sparkChart      = null;
+let currentHistory  = [];
+let activeRange     = '1M';
+let activeDays      = 30;
+let activeChartType = 'line';
 
 /* ══════════════════════════════════════════════
    Tabs
@@ -666,7 +685,25 @@ function renderAnalysis(d) {
 
   ${d.history && d.history.length ? `
   <div class="card">
-    <div class="card-title">Price — Last 30 Days</div>
+    <div class="card-title">Price Chart</div>
+    <div class="chart-controls">
+      <div class="toggle-group" id="range-toggle">
+        <button class="toggle-btn active" onclick="setRange('1M')">1M</button>
+        <button class="toggle-btn" onclick="setRange('3M')">3M</button>
+        <button class="toggle-btn" onclick="setRange('6M')">6M</button>
+      </div>
+      <div class="custom-days-wrap show" id="custom-days-wrap">
+        <span>Days:</span>
+        <input type="range" id="days-slider" min="1" max="30" value="30"
+               oninput="onDaysSlide(this.value)" />
+        <input type="number" id="days-input" min="1" max="30" value="30"
+               oninput="onDaysInput(this.value)" />
+      </div>
+      <div class="toggle-group" id="chart-type-toggle" style="margin-left:auto">
+        <button class="toggle-btn active" onclick="setChartType('line')">Line</button>
+        <button class="toggle-btn" onclick="setChartType('candle')">Candle</button>
+      </div>
+    </div>
     <div class="chart-wrap"><canvas id="sparkline"></canvas></div>
   </div>` : ''}
 
@@ -768,23 +805,92 @@ function renderAnalysis(d) {
   }
 
   if (d.history && d.history.length) {
-    const ctx    = document.getElementById('sparkline').getContext('2d');
-    const closes = d.history.map(h => h.close);
-    const labels = d.history.map(h => h.date);
-    const color  = closes[closes.length-1] >= closes[0] ? '#22c55e' : '#ef4444';
+    currentHistory  = d.history;
+    activeRange     = '1M';
+    activeDays      = 30;
+    activeChartType = 'line';
+    setTimeout(rebuildChart, 50);
+  }
+}
+
+/* ══════════════════════════════════════════════
+   Chart Controls
+══════════════════════════════════════════════ */
+function getSlicedHistory() {
+  if (!currentHistory.length) return [];
+  if (activeRange === '6M') return currentHistory;
+  if (activeRange === '3M') return currentHistory.slice(-65);
+  return currentHistory.slice(-activeDays);
+}
+
+function setRange(range) {
+  activeRange = range;
+  const wrap = document.getElementById('custom-days-wrap');
+  if (wrap) wrap.classList.toggle('show', range === '1M');
+  document.querySelectorAll('#range-toggle .toggle-btn').forEach(b =>
+    b.classList.toggle('active', b.textContent === range));
+  rebuildChart();
+}
+
+function onDaysSlide(val) {
+  activeDays = parseInt(val, 10);
+  const inp = document.getElementById('days-input');
+  if (inp) inp.value = activeDays;
+  rebuildChart();
+}
+
+function onDaysInput(val) {
+  let d = parseInt(val, 10);
+  if (isNaN(d)) return;
+  d = Math.min(30, Math.max(1, d));
+  activeDays = d;
+  const slider = document.getElementById('days-slider');
+  if (slider) slider.value = d;
+  rebuildChart();
+}
+
+function setChartType(type) {
+  activeChartType = type;
+  document.querySelectorAll('#chart-type-toggle .toggle-btn').forEach(b =>
+    b.classList.toggle('active', b.textContent.toLowerCase() === type));
+  rebuildChart();
+}
+
+function rebuildChart() {
+  if (sparkChart) { sparkChart.destroy(); sparkChart = null; }
+  const canvas = document.getElementById('sparkline');
+  if (!canvas) return;
+  const slice = getSlicedHistory();
+  if (!slice.length) return;
+
+  const ctx    = canvas.getContext('2d');
+  const scaleOpts = {
+    x: { type: 'category', grid: { color: '#2a2d3e' },
+         ticks: { color: '#8892a4', maxTicksLimit: 8, font: { size: 10 } } },
+    y: { grid: { color: '#2a2d3e' },
+         ticks: { color: '#8892a4', font: { size: 10 },
+                  callback: v => '₹' + v.toLocaleString('en-IN') } }
+  };
+
+  if (activeChartType === 'line') {
+    const closes = slice.map(h => h.close);
+    const labels = slice.map(h => h.date);
+    const color  = closes[closes.length - 1] >= closes[0] ? '#22c55e' : '#ef4444';
     sparkChart = new Chart(ctx, {
       type: 'line',
       data: { labels, datasets: [{ data: closes, borderColor: color, borderWidth: 2,
         pointRadius: 0, fill: true, backgroundColor: color + '18', tension: 0.3 }] },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: '#2a2d3e' }, ticks: { color: '#8892a4', maxTicksLimit: 6, font: { size: 10 } } },
-          y: { grid: { color: '#2a2d3e' }, ticks: { color: '#8892a4', font: { size: 10 },
-               callback: v => '₹' + v.toLocaleString('en-IN') } }
-        }
-      }
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } }, scales: scaleOpts }
+    });
+  } else {
+    const candleData = slice.map(h => ({ x: h.date, o: h.open, h: h.high, l: h.low, c: h.close }));
+    sparkChart = new Chart(ctx, {
+      type: 'candlestick',
+      data: { datasets: [{ label: 'OHLC', data: candleData,
+        color: { up: '#22c55e', down: '#ef4444', unchanged: '#8892a4' } }] },
+      options: { responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } }, scales: scaleOpts }
     });
   }
 }

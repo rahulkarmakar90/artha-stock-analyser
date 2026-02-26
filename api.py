@@ -130,12 +130,16 @@ def analyse(symbol: str):
         except Exception:
             quote = {}
 
-        # Price history for sparkline (last 30 days)
+        # Price history for chart — last 6 months (~130 trading days), full OHLCV
         history = []
-        for dt, row in df.tail(30).iterrows():
+        for dt, row in df_5y.tail(130).iterrows():
             history.append({
-                "date": str(dt)[:10],
-                "close": round(float(row["Close"]), 2),
+                "date":   str(dt)[:10],
+                "open":   round(float(row["Open"]),  2),
+                "high":   round(float(row["High"]),  2),
+                "low":    round(float(row["Low"]),   2),
+                "close":  round(float(row["Close"]), 2),
+                "volume": int(row["Volume"]) if row["Volume"] else 0,
             })
 
         # News sentiment
