@@ -230,6 +230,10 @@ REGISTRY = [
     {"symbol": "MASTEK",      "name": "Mastek",                          "sector": "IT",          "indices": []},
     {"symbol": "TANLA",       "name": "Tanla Platforms",                 "sector": "IT",          "indices": []},
     {"symbol": "RATEGAIN",    "name": "RateGain Travel Technologies",    "sector": "IT",          "indices": []},
+    {"symbol": "TEJASNET",    "name": "Tejas Networks",                  "sector": "IT",          "indices": []},
+
+    # ── Technology Distribution ─────────────────────────────────────────────
+    {"symbol": "REDINGTON",   "name": "Redington Limited",               "sector": "IT",          "indices": []},
 
     # ── Telecom / Media ────────────────────────────────────────────────────
     {"symbol": "IDEA",        "name": "Vodafone Idea",                   "sector": "Telecom",     "indices": []},
@@ -491,6 +495,11 @@ ALIASES = {
     "mastek":      "MASTEK",
     "tanla":       "TANLA",
     "rategain":    "RATEGAIN",
+    "tejas":       "TEJASNET",
+    "tejas networks": "TEJASNET",
+    "tejasnet":    "TEJASNET",
+    "redington":   "REDINGTON",
+    "redington india": "REDINGTON",
     # Telecom / Media
     "vodafone idea": "IDEA",
     "vi":          "IDEA",
