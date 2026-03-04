@@ -4,8 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Artha — Indian Stock Analyser</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3/dist/chartjs-adapter-date-fns.bundle.min.js" crossorigin="anonymous"></script>
+<script src="/static/chartjs-chart-financial.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
@@ -20,51 +21,155 @@
     --radius: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+  html, body { height: 100%; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; }
 
-  header {
+  /* ── App shell ── */
+  .app-body {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .topbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    padding: 16px 32px;
-    display: flex; align-items: center; gap: 12px;
+    flex-shrink: 0;
   }
-  header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
-  header span.accent { color: var(--accent); }
-  header small { color: var(--muted); font-size: 0.8rem; margin-left: 4px; }
+  .topbar h1 { font-size: 1rem; margin: 0; white-space: nowrap; }
+  .topbar h1 .accent { color: var(--accent); }
+  .topbar .search-wrap { flex: 1; max-width: 480px; position: relative; }
 
-  .tabs {
+  .scanner-btn {
+    margin-left: auto; padding: 6px 14px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--muted); font-size: 0.8rem; cursor: pointer;
+    white-space: nowrap;
+  }
+  .scanner-btn:hover { color: var(--text); border-color: var(--accent); opacity: 1; }
+
+  .main-split {
     display: flex;
-    border-bottom: 1px solid var(--border);
-    padding: 0 32px;
-    background: var(--surface);
+    overflow: hidden;
+    min-height: 0;
   }
-  .tab {
-    padding: 12px 24px; cursor: pointer; font-size: 0.9rem;
-    color: var(--muted); border-bottom: 2px solid transparent;
-    transition: all 0.2s;
-  }
-  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-  .tab:hover { color: var(--text); }
+  .main-split > .left-col { flex: 0 0 56%; min-width: 220px; min-height: 0; overflow: hidden; }
+  .main-split > .chat-panel { flex: 1 1 0; min-width: 180px; }
 
-  .page { display: none; padding: 32px; max-width: 1100px; margin: 0 auto; }
-  .page.active { display: block; }
+  .resize-handle {
+    flex: 0 0 5px;
+    background: var(--border);
+    cursor: col-resize;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .resize-handle:hover, .resize-handle.dragging { background: var(--accent); }
+  .resize-handle::after {
+    content: '';
+    position: absolute; inset: 0 -3px;  /* widen hit-area */
+  }
+
+  .stats-empty {
+    display: flex; align-items: center; justify-content: center;
+    height: 60%; color: var(--muted); font-size: 0.9rem; text-align: center;
+  }
+
+  /* Left column: stats on top, news on bottom */
+  .left-col {
+    display: flex; flex-direction: column;
+    min-height: 0; overflow: hidden;
+  }
+  .stats-panel {
+    flex: 1; overflow-y: auto;
+    padding: 12px 14px;
+    min-height: 0;
+  }
+  .news-panel {
+    flex-shrink: 0;
+    height: 210px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    padding: 8px 14px 10px;
+    background: var(--bg);
+  }
+  .news-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 6px;
+  }
+  .news-panel-title {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .news-panel-symbol {
+    font-size: 0.72rem; font-weight: 700; color: var(--accent);
+  }
+  .news-panel-empty {
+    display: flex; align-items: center; justify-content: center;
+    height: 80%; color: var(--muted); font-size: 0.82rem;
+  }
+  .news-item-compact {
+    display: flex; align-items: flex-start; gap: 7px;
+    padding: 5px 0; border-bottom: 1px solid var(--border);
+  }
+  .news-item-compact:last-child { border-bottom: none; }
+  .news-item-compact .news-sent {
+    flex-shrink: 0; padding: 2px 5px; border-radius: 3px;
+    font-size: 0.6rem; font-weight: 700; text-transform: uppercase; margin-top: 1px;
+  }
+  .news-item-compact .news-title {
+    font-size: 0.79rem; line-height: 1.35;
+  }
+  .news-item-compact .news-title a { color: var(--text); text-decoration: none; }
+  .news-item-compact .news-title a:hover { color: var(--accent); }
+  .news-item-compact .news-source {
+    font-size: 0.64rem; color: var(--muted); margin-top: 1px;
+  }
+
+  .chat-panel {
+    display: flex; flex-direction: column;
+    border-left: 1px solid var(--border);
+    min-height: 0; overflow: hidden;
+  }
+  .chat-context-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.75rem; color: var(--muted);
+    flex-shrink: 0;
+  }
+  .chat-messages {
+    flex: 1; overflow-y: auto;
+    padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 10px;
+    min-height: 0;
+  }
+  .chat-input-row {
+    display: flex; gap: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .chat-input-row input { flex: 1; padding: 7px 11px; font-size: 0.85rem; }
+  .chat-input-row button { padding: 7px 14px; font-size: 0.85rem; }
 
   /* ── Search ── */
-  .search-wrap { position: relative; margin-bottom: 32px; }
-  .search-bar { display: flex; gap: 12px; }
+  .search-wrap { position: relative; }
+  .search-bar { display: flex; gap: 8px; }
   .search-bar input {
-    flex: 1; padding: 14px 18px; border-radius: var(--radius);
-    border: 1px solid var(--border); background: var(--surface);
-    color: var(--text); font-size: 1rem; outline: none;
+    flex: 1; padding: 8px 12px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font-size: 0.88rem; outline: none;
     transition: border-color 0.2s;
   }
   .search-bar input:focus { border-color: var(--accent); }
   .search-bar input::placeholder { color: var(--muted); }
 
-  /* Autocomplete dropdown */
+  /* Autocomplete */
   .autocomplete {
-    position: absolute; top: calc(100% + 4px); left: 0;
-    right: 80px; /* leave room for button */
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
     background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius); overflow: hidden;
     z-index: 100; display: none;
@@ -85,168 +190,178 @@
   .ac-sym { font-weight: 700; font-size: 0.9rem; min-width: 90px; color: var(--accent); }
   .ac-name { font-size: 0.85rem; color: var(--text); flex: 1; }
   .ac-sector { font-size: 0.72rem; color: var(--muted); }
-  .ac-group-badge {
-    padding: 3px 8px; border-radius: 20px; font-size: 0.7rem;
-    background: var(--border); color: var(--muted);
-  }
 
+  /* ── Buttons ── */
   button {
-    padding: 14px 28px; border-radius: var(--radius);
+    padding: 8px 18px; border-radius: var(--radius);
     border: none; background: var(--accent); color: #fff;
-    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    font-size: 0.88rem; font-weight: 600; cursor: pointer;
     transition: opacity 0.2s; white-space: nowrap;
   }
   button:hover { opacity: 0.85; }
   button:disabled { opacity: 0.5; cursor: default; }
-  button.secondary {
-    background: var(--border); color: var(--text);
-  }
+  button.secondary { background: var(--border); color: var(--text); }
 
-  /* ── Cards ── */
+  /* ── Cards (compact) ── */
   .card {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 24px; margin-bottom: 20px;
+    border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px;
   }
   .card-title {
-    font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
-    color: var(--muted); margin-bottom: 16px;
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); margin-bottom: 8px;
   }
 
-  .quote-header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-  .quote-symbol { font-size: 1.8rem; font-weight: 800; }
-  .quote-price { font-size: 2.2rem; font-weight: 700; }
-  .quote-change { font-size: 1rem; padding: 4px 10px; border-radius: 6px; }
+  .quote-header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .quote-symbol { font-size: 1.3rem; font-weight: 800; }
+  .quote-price  { font-size: 1.5rem; font-weight: 700; }
+  .quote-change { font-size: 0.88rem; padding: 3px 8px; border-radius: 6px; }
   .up   { color: var(--green); background: #052e16; }
   .down { color: var(--red);   background: #2d0a0a; }
 
   .quote-meta {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 16px; margin-top: 20px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 6px; margin-top: 8px;
   }
-  .meta-item label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 4px; }
-  .meta-item span  { font-size: 1rem; font-weight: 600; }
+  .meta-item label { font-size: 0.63rem; color: var(--muted); display: block; margin-bottom: 2px; }
+  .meta-item span  { font-size: 0.82rem; font-weight: 600; }
 
-  .indicators { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
-  .indicator  { background: var(--bg); border-radius: 8px; padding: 16px; }
-  .indicator label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
-  .indicator .val  { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+  /* Compact indicators — 2 column */
+  .indicators { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .indicator  { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+  .indicator label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .indicator .val  { font-size: 0.9rem; font-weight: 700; margin-top: 4px; }
   .rsi-green { color: var(--green); }
   .rsi-red   { color: var(--red);   }
   .rsi-yellow{ color: var(--yellow);}
 
-  .outlook-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .outlook-card { background: var(--bg); border-radius: 8px; padding: 16px; text-align: center; }
-  .outlook-card .timeframe { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .outlook-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .outlook-card { background: var(--bg); border-radius: 8px; padding: 10px 12px; text-align: center; }
+  .outlook-card .timeframe { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
   .outlook-card .badge {
-    display: inline-block; padding: 6px 12px; border-radius: 20px;
-    font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;
+    display: inline-block; padding: 4px 10px; border-radius: 20px;
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
   }
-  .outlook-card .conf { font-size: 0.8rem; color: var(--muted); }
+  .outlook-card .conf { font-size: 0.75rem; color: var(--muted); }
   .b-strongly_bullish { background: #052e16; color: var(--green); }
   .b-bullish          { background: #0a1f14; color: #4ade80; }
   .b-neutral          { background: #1c1408; color: var(--yellow); }
   .b-bearish          { background: #2d0a0a; color: #f87171; }
   .b-strongly_bearish { background: #450a0a; color: var(--red); }
 
-  .range-bar-wrap { margin-top: 12px; }
-  .range-labels   { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+  .range-bar-wrap { margin-top: 10px; }
+  .range-labels   { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
   .range-track    { height: 8px; background: var(--border); border-radius: 4px; }
   .range-fill     { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #6c63ff, #22c55e); }
-  .range-values   { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; margin-top: 6px; }
+  .range-values   { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; margin-top: 4px; }
 
-  .chart-wrap { height: 240px; margin-top: 4px; }
-  .chart-controls { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  /* Compact chart */
+  .chart-wrap { height: 175px; margin-top: 4px; }
+  .chart-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
   .toggle-group { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
-  .toggle-btn { padding: 5px 13px; font-size: 0.78rem; font-weight: 600; background: var(--bg);
+  .toggle-btn {
+    padding: 3px 9px; font-size: 0.72rem; font-weight: 600; background: var(--bg);
     color: var(--muted); border: none; border-right: 1px solid var(--border);
-    cursor: pointer; transition: all 0.15s; }
+    cursor: pointer; transition: all 0.15s;
+  }
   .toggle-btn:last-child { border-right: none; }
   .toggle-btn.active { background: var(--accent); color: #fff; }
   .toggle-btn:hover:not(.active) { color: var(--text); }
-  .custom-days-wrap { display: none; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+  .custom-days-wrap { display: none; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--muted); }
   .custom-days-wrap.show { display: flex; }
-  .custom-days-wrap input[type=range] { width: 90px; accent-color: var(--accent); }
-  .custom-days-wrap input[type=number] { width: 48px; padding: 4px 6px; border-radius: 6px;
+  .custom-days-wrap input[type=range] { width: 80px; accent-color: var(--accent); }
+  .custom-days-wrap input[type=number] {
+    width: 44px; padding: 3px 5px; border-radius: 6px;
     border: 1px solid var(--border); background: var(--bg); color: var(--text);
-    font-size: 0.8rem; text-align: center; }
+    font-size: 0.75rem; text-align: center;
+  }
 
-  .news-list  { list-style: none; }
-  .news-item  {
-    padding: 12px 0; border-bottom: 1px solid var(--border);
-    display: flex; align-items: flex-start; gap: 12px;
+  .news-list { list-style: none; }
+  .news-item {
+    padding: 8px 0; border-bottom: 1px solid var(--border);
+    display: flex; align-items: flex-start; gap: 8px;
   }
   .news-item:last-child { border-bottom: none; }
-  .news-sent  {
-    flex-shrink: 0; padding: 3px 8px; border-radius: 4px;
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+  .news-sent {
+    flex-shrink: 0; padding: 2px 6px; border-radius: 4px;
+    font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
   }
   .sent-positive{ background: #052e16; color: var(--green); }
   .sent-negative{ background: #2d0a0a; color: var(--red);   }
   .sent-neutral { background: #1c1408; color: var(--yellow);}
-  .news-title   { font-size: 0.88rem; line-height: 1.4; }
+  .news-title   { font-size: 0.82rem; line-height: 1.4; }
   .news-title a { color: var(--text); text-decoration: none; }
   .news-title a:hover { color: var(--accent); }
-  .news-source  { font-size: 0.73rem; color: var(--muted); margin-top: 3px; }
+  .news-source  { font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
 
-  /* ── Scanner ── */
-  .scan-header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-  .scan-header p { color: var(--muted); font-size: 0.88rem; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  /* ── Scanner modal ── */
+  .scanner-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200; display: none;
+    align-items: flex-start; justify-content: center;
+    padding-top: 50px;
+  }
+  .scanner-modal.show { display: flex; }
+  .scanner-modal-inner {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius);
+    width: min(960px, 95vw); max-height: 82vh;
+    overflow-y: auto; padding: 20px; position: relative;
+  }
+  .modal-close {
+    position: absolute; top: 10px; right: 14px;
+    background: none; border: none; color: var(--muted);
+    font-size: 1.3rem; cursor: pointer; line-height: 1;
+  }
+  .modal-close:hover { color: var(--text); opacity: 1; }
+
+  /* Scanner table */
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   thead th {
-    text-align: left; padding: 10px 14px; color: var(--muted);
-    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px;
+    text-align: left; padding: 8px 12px; color: var(--muted);
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px;
     border-bottom: 1px solid var(--border);
   }
   tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
   tbody tr:hover { background: var(--surface); }
-  tbody td { padding: 12px 14px; }
+  tbody td { padding: 10px 12px; }
   tbody tr.mover-highlight { background: #0d1f12; }
   tbody tr.mover-highlight:hover { background: #112618; }
   .tbl-symbol { font-weight: 700; cursor: pointer; color: var(--accent); }
   .tbl-symbol:hover { text-decoration: underline; }
 
   /* ── Chat ── */
-  .chat-layout { display: flex; flex-direction: column; height: calc(100vh - 200px); min-height: 500px; }
-  .chat-context-bar {
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 0; margin-bottom: 12px;
-    border-bottom: 1px solid var(--border);
-  }
-  .chat-context-bar label { font-size: 0.8rem; color: var(--muted); }
   .context-chip {
     display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 12px; background: var(--surface);
+    padding: 3px 10px; background: var(--surface);
     border: 1px solid var(--accent); border-radius: 20px;
-    font-size: 0.82rem; font-weight: 600; color: var(--accent);
+    font-size: 0.78rem; font-weight: 600; color: var(--accent);
   }
   .context-chip button {
     padding: 0; background: none; color: var(--muted);
-    font-size: 0.9rem; width: 16px; height: 16px;
+    font-size: 0.85rem; width: 14px; height: 14px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 50%;
   }
   .context-chip button:hover { color: var(--red); background: none; opacity: 1; }
-  .no-context { font-size: 0.82rem; color: var(--muted); font-style: italic; }
+  .no-context { font-size: 0.78rem; color: var(--muted); font-style: italic; }
 
-  .chat-messages {
-    flex: 1; overflow-y: auto; padding: 8px 0;
-    display: flex; flex-direction: column; gap: 16px;
-  }
   .chat-messages::-webkit-scrollbar { width: 4px; }
   .chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  .msg { display: flex; flex-direction: column; max-width: 80%; }
+  .msg { display: flex; flex-direction: column; max-width: 85%; }
   .msg.user  { align-self: flex-end; align-items: flex-end; }
   .msg.artha { align-self: flex-start; align-items: flex-start; }
   .msg-bubble {
-    padding: 12px 16px; border-radius: 16px;
-    font-size: 0.9rem; line-height: 1.6; white-space: pre-wrap;
+    padding: 9px 13px; border-radius: 14px;
+    font-size: 0.84rem; line-height: 1.5; white-space: pre-wrap;
   }
   .msg.user  .msg-bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
   .msg.artha .msg-bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-  .msg-label { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
+  .msg-label { font-size: 0.68rem; color: var(--muted); margin-bottom: 3px; }
 
-  .typing-indicator { display: flex; gap: 4px; align-items: center; padding: 12px 16px; }
+  .typing-indicator { display: flex; gap: 4px; align-items: center; padding: 9px 13px; }
   .typing-dot {
     width: 6px; height: 6px; border-radius: 50%;
     background: var(--muted); animation: bounce 1.2s infinite;
@@ -255,177 +370,246 @@
   .typing-dot:nth-child(3) { animation-delay: 0.4s; }
   @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
 
-  .chat-suggestions {
-    display: flex; flex-wrap: wrap; gap: 8px;
-    padding: 8px 0; margin-bottom: 8px;
-  }
+  .chat-suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0; margin-bottom: 6px; }
   .suggestion {
-    padding: 6px 14px; border-radius: 20px; font-size: 0.8rem;
+    padding: 5px 12px; border-radius: 20px; font-size: 0.76rem;
     background: var(--surface); border: 1px solid var(--border);
     color: var(--text); cursor: pointer; transition: all 0.15s;
   }
   .suggestion:hover { border-color: var(--accent); color: var(--accent); }
 
-  .chat-input-row {
-    display: flex; gap: 10px; padding-top: 12px;
-    border-top: 1px solid var(--border);
-  }
   .chat-input-row input {
-    flex: 1; padding: 12px 16px; border-radius: var(--radius);
+    flex: 1; padding: 7px 11px; border-radius: var(--radius);
     border: 1px solid var(--border); background: var(--surface);
-    color: var(--text); font-size: 0.9rem; outline: none; transition: border-color 0.2s;
+    color: var(--text); font-size: 0.85rem; outline: none; transition: border-color 0.2s;
   }
   .chat-input-row input:focus { border-color: var(--accent); }
   .chat-input-row input::placeholder { color: var(--muted); }
-  .chat-input-row button { padding: 12px 22px; }
 
   /* ── Shared ── */
-  .loader { display: none; text-align: center; padding: 48px; color: var(--muted); font-size: 0.9rem; }
+  .loader { display: none; text-align: center; padding: 32px; color: var(--muted); font-size: 0.88rem; }
   .loader.show { display: block; }
   .spinner {
-    width: 36px; height: 36px; border: 3px solid var(--border);
+    width: 30px; height: 30px; border: 3px solid var(--border);
     border-top-color: var(--accent); border-radius: 50%;
-    animation: spin 0.8s linear infinite; margin: 0 auto 16px;
+    animation: spin 0.8s linear infinite; margin: 0 auto 12px;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   .error-msg {
     background: #2d0a0a; border: 1px solid #7f1d1d;
     color: #fca5a5; border-radius: var(--radius);
-    padding: 16px 20px; margin-bottom: 20px; display: none;
+    padding: 12px 16px; margin-bottom: 12px; display: none;
   }
   .error-msg.show { display: block; }
 
-  @media (max-width: 640px) {
-    .outlook-grid { grid-template-columns: 1fr; }
-    header { padding: 12px 16px; }
-    .page  { padding: 16px; }
-    .tabs  { padding: 0 16px; }
-    .msg   { max-width: 95%; }
-  }
-
   /* ── Exchange badge ── */
   .exchange-badge {
-    display: inline-block; padding: 3px 10px; border-radius: 20px;
-    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px;
-    margin-left: 10px; vertical-align: middle;
+    display: inline-block; padding: 2px 8px; border-radius: 20px;
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.5px;
+    margin-left: 8px; vertical-align: middle;
   }
   .exchange-nse { background: #0d2847; color: #60a5fa; }
   .exchange-bse { background: #1a0d2e; color: #c084fc; }
   .exchange-unknown { background: var(--border); color: var(--muted); }
 
   /* ── ML predictions card ── */
-  .ml-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-  .ml-model-box { background: var(--bg); border-radius: 8px; padding: 16px; }
-  .ml-model-label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-  .ml-direction { font-size: 1.25rem; font-weight: 700; margin-bottom: 8px; }
-  .ml-prob-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.78rem; }
-  .ml-prob-row .prob-label { width: 52px; color: var(--muted); }
-  .ml-prob-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .ml-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .ml-model-box { background: var(--bg); border-radius: 8px; padding: 12px; }
+  .ml-model-label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .ml-direction { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
+  .ml-prob-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 0.74rem; }
+  .ml-prob-row .prob-label { width: 48px; color: var(--muted); }
+  .ml-prob-track { flex: 1; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
   .ml-prob-fill-up      { height: 100%; background: var(--green); border-radius: 3px; }
   .ml-prob-fill-down    { height: 100%; background: var(--red);   border-radius: 3px; }
   .ml-prob-fill-neutral { height: 100%; background: var(--yellow);border-radius: 3px; }
-  .prob-val { width: 40px; text-align: right; font-weight: 600; }
+  .prob-val { width: 38px; text-align: right; font-weight: 600; }
 
   /* ── Feature importance chart ── */
-  .fi-chart-wrap { height: 240px; margin-top: 8px; }
+  .fi-chart-wrap { height: 200px; margin-top: 8px; }
 
   /* ── Backtest collapsible ── */
   .collapsible-header {
     display: flex; align-items: center; justify-content: space-between;
     cursor: pointer; user-select: none;
   }
-  .toggle-icon { font-size: 0.75rem; color: var(--muted); transition: transform 0.2s; display: inline-block; }
+  .toggle-icon { font-size: 0.72rem; color: var(--muted); transition: transform 0.2s; display: inline-block; }
   .toggle-icon.open { transform: rotate(180deg); }
-  .collapsible-body { display: none; margin-top: 20px; }
+  .collapsible-body { display: none; margin-top: 14px; }
   .collapsible-body.open { display: block; }
-  .backtest-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
-  .bt-metric { background: var(--bg); border-radius: 8px; padding: 14px; }
-  .bt-metric label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 4px; }
-  .bt-metric .bt-val { font-size: 1.35rem; font-weight: 700; }
+  .backtest-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .bt-metric { background: var(--bg); border-radius: 8px; padding: 10px 12px; }
+  .bt-metric label { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 3px; }
+  .bt-metric .bt-val { font-size: 1.1rem; font-weight: 700; }
   .bt-positive { color: var(--green); }
   .bt-negative { color: var(--red);   }
   .bt-neutral  { color: var(--yellow);}
+
+  @media (max-width: 768px) {
+    .main-split { flex-direction: column; }
+    .main-split > .left-col { flex: 0 0 50%; min-width: unset; }
+    .main-split > .chat-panel { flex: 1 1 0; min-width: unset; }
+    .resize-handle { flex: 0 0 5px; cursor: row-resize; }
+    .chat-panel { border-left: none; border-top: 1px solid var(--border); }
+    .news-panel { height: 160px; }
+  }
+
+  /* ── Card drag-to-reorder ── */
+  .card-drag-handle {
+    cursor: grab; color: var(--muted); font-size: 1rem;
+    opacity: 0; transition: opacity 0.15s; margin-left: auto;
+    padding: 0 2px; line-height: 1; flex-shrink: 0;
+  }
+  .card:hover .card-drag-handle { opacity: 1; }
+  .card-drag-handle:active { cursor: grabbing; }
+  .card.dragging-card { opacity: 0.35; outline: 2px dashed var(--accent); }
+  /* card-title needs flex so handle sits on right edge */
+  .card > .card-title { display: flex; align-items: center; }
+
+  /* ── News panel resize handle ── */
+  .news-resize-handle {
+    flex-shrink: 0; height: 5px;
+    background: var(--border); cursor: row-resize;
+    transition: background 0.15s; position: relative;
+  }
+  .news-resize-handle:hover, .news-resize-handle.dragging { background: var(--accent); }
+  .news-resize-handle::before {
+    content: ''; position: absolute; inset: -3px 0; /* wider hit area */
+  }
+
+  /* ── Streaming chat bubble ── */
+  .msg.streaming .bubble::after {
+    content: '▋';
+    animation: blink 0.7s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── Fundamentals grid ── */
+  .fund-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  }
+  .fund-grid > div { display: flex; flex-direction: column; gap: 2px; }
+  .fund-grid label { font-size: 0.63rem; color: var(--muted); text-transform: uppercase; }
+  .fund-grid span  { font-size: 0.85rem; font-weight: 600; }
+
+  /* ── Consensus banner ── */
+  .consensus-banner {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-radius: 8px;
+    font-size: 0.8rem; margin-bottom: 10px;
+  }
+  .consensus-agree    { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #4ade80; }
+  .consensus-conflict { background: rgba(234,179,8,0.1);  border: 1px solid rgba(234,179,8,0.35); color: #facc15; }
+  .consensus-icon { font-size: 1rem; }
+  .consensus-conf { margin-left: auto; color: var(--muted); }
 </style>
 </head>
 <body>
 
-<header>
-  <h1><span class="accent">Artha</span> <small>अर्थ</small></h1>
-  <span style="color:var(--muted);font-size:0.85rem;margin-left:auto;">Indian Stock Market Analyser</span>
-</header>
+<div class="app-body">
 
-<div class="tabs">
-  <div class="tab active" onclick="switchTab('analyse')">Analyse Stock</div>
-  <div class="tab" onclick="switchTab('scanner')">Nifty 50 Scanner</div>
-  <div class="tab" onclick="switchTab('chat')">Chat</div>
-</div>
-
-<!-- ══ ANALYSE TAB ══ -->
-<div id="tab-analyse" class="page active">
-  <div class="search-wrap">
-    <div class="search-bar">
-      <input id="sym-input" type="text" autocomplete="off"
-             placeholder="Search by name, symbol, sector or index — e.g. HDFC Bank, IT stocks, Nifty Bank"
-             oninput="onSearchInput(this.value)"
-             onkeydown="onSearchKey(event)" />
-      <button onclick="analyseFromSearch()" id="analyse-btn">Analyse</button>
-    </div>
-    <div id="autocomplete" class="autocomplete"></div>
-  </div>
-
-  <div id="analyse-error" class="error-msg"></div>
-  <div id="analyse-loader" class="loader"><div class="spinner"></div>Fetching data…</div>
-  <div id="analyse-result"></div>
-</div>
-
-<!-- ══ SCANNER TAB ══ -->
-<div id="tab-scanner" class="page">
-  <div class="scan-header">
-    <button onclick="runScan()" id="scan-btn">Scan Nifty 50</button>
-    <p id="scan-status">Click Scan to find top movers across Nifty 50 stocks.</p>
-  </div>
-  <div id="scan-error" class="error-msg"></div>
-  <div id="scan-loader" class="loader"><div class="spinner"></div>Scanning 50 stocks — this takes ~60 seconds…</div>
-  <div id="scan-result"></div>
-</div>
-
-<!-- ══ CHAT TAB ══ -->
-<div id="tab-chat" class="page">
-  <div class="chat-layout">
-    <!-- Context bar -->
-    <div class="chat-context-bar">
-      <label>Stock context:</label>
-      <div id="chat-context-display">
-        <span class="no-context">None — analyse a stock to set context automatically</span>
+  <!-- Compact topbar -->
+  <div class="topbar">
+    <h1><span class="accent">Artha</span> <small style="font-size:0.7rem;color:var(--muted)">अर्थ</small></h1>
+    <div class="search-wrap">
+      <div class="search-bar">
+        <input id="sym-input" type="text" autocomplete="off"
+               placeholder="Search symbol, name, sector…"
+               oninput="onSearchInput(this.value)"
+               onkeydown="onSearchKey(event)" />
+        <button onclick="analyseFromSearch()" id="analyse-btn">Analyse</button>
       </div>
-      <button class="secondary" onclick="clearChat()" style="padding:6px 14px;font-size:0.8rem;margin-left:auto;">Clear chat</button>
+      <div id="autocomplete" class="autocomplete"></div>
     </div>
+    <button class="scanner-btn" onclick="openScanner()">⊞ Scanner</button>
+  </div>
 
-    <!-- Messages -->
-    <div class="chat-messages" id="chat-messages">
-      <!-- Suggestions shown when empty -->
-      <div id="chat-empty">
-        <p style="color:var(--muted);font-size:0.9rem;margin-bottom:16px;">
-          Ask Artha anything about Indian stocks. Go to <strong>Analyse Stock</strong> first to set a context, or ask a general question below.
-        </p>
-        <div class="chat-suggestions" id="chat-suggestions">
-          <span class="suggestion" onclick="sendSuggestion(this)">What does the RSI tell me?</span>
-          <span class="suggestion" onclick="sendSuggestion(this)">Is this a good time to buy?</span>
-          <span class="suggestion" onclick="sendSuggestion(this)">Explain the MACD signal</span>
-          <span class="suggestion" onclick="sendSuggestion(this)">What are the short-term risks?</span>
-          <span class="suggestion" onclick="sendSuggestion(this)">How does news sentiment affect price?</span>
-          <span class="suggestion" onclick="sendSuggestion(this)">Compare short-term and long-term outlook</span>
+  <!-- Main split pane -->
+  <div class="main-split">
+
+    <!-- Left column: stats (top) + news (bottom) -->
+    <div class="left-col">
+
+      <div class="stats-panel" id="stats-panel">
+        <div id="analyse-error" class="error-msg"></div>
+        <div id="analyse-loader" class="loader"><div class="spinner"></div>Fetching data…</div>
+        <div id="analyse-result"></div>
+        <div id="stats-empty" class="stats-empty">
+          <div>
+            <p style="font-size:1.4rem;margin-bottom:8px">📊</p>
+            <p>Search for a stock above,<br>or ask Artha in the chat →</p>
+          </div>
         </div>
       </div>
+
+      <!-- News panel resize handle -->
+      <div class="news-resize-handle" id="news-resize-handle"></div>
+
+      <!-- News panel -->
+      <div class="news-panel" id="news-panel">
+        <div class="news-panel-header">
+          <span class="news-panel-title">Latest News</span>
+          <span class="news-panel-symbol" id="news-panel-symbol"></span>
+        </div>
+        <div id="news-panel-content">
+          <div class="news-panel-empty">Search for a stock to see headlines</div>
+        </div>
+      </div>
+
+    </div><!-- .left-col -->
+
+    <div class="resize-handle" id="resize-handle"></div>
+
+    <!-- Right: chat panel (always visible) -->
+    <div class="chat-panel">
+      <div class="chat-context-bar">
+        <span>Context:</span>
+        <div id="chat-context-display">
+          <span class="no-context">none</span>
+        </div>
+        <button class="secondary" onclick="clearChat()"
+                style="margin-left:auto;padding:3px 10px;font-size:0.73rem">Clear</button>
+      </div>
+      <div class="chat-messages" id="chat-messages">
+        <div id="chat-empty">
+          <p style="color:var(--muted);font-size:0.82rem;padding:6px 0">
+            Ask Artha about any Indian stock…
+          </p>
+          <div class="chat-suggestions" id="chat-suggestions">
+            <span class="suggestion" onclick="sendSuggestion(this)">Analyse RELIANCE</span>
+            <span class="suggestion" onclick="sendSuggestion(this)">What does RSI tell me?</span>
+            <span class="suggestion" onclick="sendSuggestion(this)">Best PSU stocks now?</span>
+            <span class="suggestion" onclick="sendSuggestion(this)">Explain MACD histogram</span>
+          </div>
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input id="chat-input" type="text"
+               placeholder="Ask about a stock…"
+               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}" />
+        <button onclick="sendChat()" id="chat-send-btn">Send</button>
+      </div>
     </div>
 
-    <!-- Input -->
-    <div class="chat-input-row">
-      <input id="chat-input" type="text" placeholder="Ask about a stock, sector, indicator…"
-             onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); sendChat(); }" />
-      <button onclick="sendChat()" id="chat-send-btn">Send</button>
+  </div><!-- .main-split -->
+
+</div><!-- .app-body -->
+
+<!-- Scanner modal -->
+<div class="scanner-modal" id="scanner-modal" onclick="closeScannerModal(event)">
+  <div class="scanner-modal-inner">
+    <button class="modal-close" onclick="closeScannerModal()">×</button>
+    <div style="font-size:1rem;font-weight:700;margin-bottom:14px">⊞ Nifty 50 Scanner</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+      <button onclick="runScan()" id="scan-btn">Run Scan</button>
+      <span id="scan-status" style="font-size:0.8rem;color:var(--muted)"></span>
+      <span id="scan-loader" style="display:none">
+        <div class="spinner" style="width:18px;height:18px;border-width:2px;margin:0;display:inline-block;vertical-align:middle"></div>
+      </span>
     </div>
+    <div id="scan-error" class="error-msg"></div>
+    <div id="scan-result"></div>
   </div>
 </div>
 
@@ -433,11 +617,11 @@
 /* ══════════════════════════════════════════════
    State
 ══════════════════════════════════════════════ */
-let currentSymbol   = '';   // set when a stock is analysed
-let fiChart         = null; // feature importance chart
-let chatHistory     = [];   // [{role, content}]
-let acResults       = [];   // current autocomplete results
-let acFocusIdx      = -1;   // keyboard nav index
+let currentSymbol   = '';
+let fiChart         = null;
+let chatHistory     = [];
+let acResults       = [];
+let acFocusIdx      = -1;
 let acDebounce      = null;
 let sparkChart      = null;
 let currentHistory  = [];
@@ -446,15 +630,48 @@ let activeDays      = 30;
 let activeChartType = 'line';
 
 /* ══════════════════════════════════════════════
-   Tabs
+   News Panel
 ══════════════════════════════════════════════ */
-function switchTab(name) {
-  const names = ['analyse', 'scanner', 'chat'];
-  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', names[i] === name));
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  if (name === 'chat') document.getElementById('chat-input').focus();
+function renderNewsPanel(symbol, articles) {
+  const symbolEl  = document.getElementById('news-panel-symbol');
+  const contentEl = document.getElementById('news-panel-content');
+  if (!contentEl) return;
+
+  if (symbolEl) symbolEl.textContent = symbol || '';
+
+  if (!articles || !articles.length) {
+    contentEl.innerHTML = '<div class="news-panel-empty">No recent news found</div>';
+    return;
+  }
+
+  contentEl.innerHTML = articles.map(a => {
+    const sentCls = a.sentiment === 'positive' ? 'sent-positive'
+                  : a.sentiment === 'negative' ? 'sent-negative' : 'sent-neutral';
+    const src = [a.source, a.published ? a.published.slice(0,10) : ''].filter(Boolean).join(' · ');
+    return `<div class="news-item-compact">
+      <span class="news-sent ${sentCls}">${a.sentiment}</span>
+      <div>
+        <div class="news-title"><a href="${a.link}" target="_blank" rel="noopener">${a.title}</a></div>
+        ${src ? `<div class="news-source">${src}</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
 }
+
+/* ══════════════════════════════════════════════
+   Scanner Modal
+══════════════════════════════════════════════ */
+function openScanner() {
+  document.getElementById('scanner-modal').classList.add('show');
+  if (!document.getElementById('scan-result').innerHTML.trim()) runScan();
+}
+
+function closeScannerModal(e) {
+  if (!e || e.target === document.getElementById('scanner-modal'))
+    document.getElementById('scanner-modal').classList.remove('show');
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeScannerModal(); });
 
 /* ══════════════════════════════════════════════
    Helpers
@@ -535,7 +752,7 @@ function selectAC(idx) {
 }
 
 function onSearchKey(e) {
-  const ac = document.getElementById('autocomplete');
+  const ac    = document.getElementById('autocomplete');
   const items = ac.querySelectorAll('.ac-item');
   if (e.key === 'ArrowDown') {
     e.preventDefault();
@@ -557,7 +774,6 @@ function onSearchKey(e) {
   }
 }
 
-// Click outside to close autocomplete
 document.addEventListener('click', e => {
   if (!e.target.closest('.search-wrap')) hideAC();
 });
@@ -570,7 +786,6 @@ async function analyseFromSearch() {
   if (!raw) return;
   hideAC();
 
-  // Try to resolve first via search API
   try {
     const res  = await fetch(`/api/search?q=${encodeURIComponent(raw)}`);
     const data = await res.json();
@@ -578,13 +793,11 @@ async function analyseFromSearch() {
       analyseStock(data.results[0].symbol);
       return;
     } else if (data.type === 'list' && data.results.length) {
-      // Show a picker for sector/index results
       showGroupPicker(data);
       return;
     }
   } catch {}
 
-  // Fallback: treat as direct symbol
   analyseStock(raw.toUpperCase());
 }
 
@@ -605,6 +818,9 @@ function showGroupPicker(data) {
       <div class="card-title">Select a stock — ${label}</div>
       ${rows}
     </div>`;
+
+  const empty = document.getElementById('stats-empty');
+  if (empty) empty.remove();
 }
 
 async function analyseStock(symbol) {
@@ -629,6 +845,8 @@ async function analyseStock(symbol) {
     if (!res.ok) throw new Error(data.detail || 'Unknown error');
     renderAnalysis(data);
     setContext(symbol);
+    const empty = document.getElementById('stats-empty');
+    if (empty) empty.remove();
   } catch (e) {
     errEl.textContent = `Error: ${e.message}`;
     errEl.classList.add('show');
@@ -646,8 +864,7 @@ function renderAnalysis(d) {
   const ti   = pred.technical_indicators || {};
   const ecr  = pred.expected_close_range || {};
 
-  // Exchange badge
-  const exCls = d.exchange === 'NSE' ? 'exchange-nse' : d.exchange === 'BSE' ? 'exchange-bse' : 'exchange-unknown';
+  const exCls   = d.exchange === 'NSE' ? 'exchange-nse' : d.exchange === 'BSE' ? 'exchange-bse' : 'exchange-unknown';
   const exBadge = d.exchange ? `<span class="exchange-badge ${exCls}">${d.exchange}</span>` : '';
 
   let changeHtml = '';
@@ -665,7 +882,8 @@ function renderAnalysis(d) {
   }
 
   document.getElementById('analyse-result').innerHTML = `
-  <div class="card">
+  ${renderConsensusBanner(d.consensus)}
+  <div class="card" data-card="quote">
     <div class="card-title">Live Quote</div>
     <div class="quote-header">
       <span class="quote-symbol">${d.symbol}${exBadge}</span>
@@ -684,7 +902,7 @@ function renderAnalysis(d) {
   </div>
 
   ${d.history && d.history.length ? `
-  <div class="card">
+  <div class="card" data-card="chart">
     <div class="card-title">Price Chart</div>
     <div class="chart-controls">
       <div class="toggle-group" id="range-toggle">
@@ -707,7 +925,7 @@ function renderAnalysis(d) {
     <div class="chart-wrap"><canvas id="sparkline"></canvas></div>
   </div>` : ''}
 
-  <div class="card">
+  <div class="card" data-card="indicators">
     <div class="card-title">Technical Indicators</div>
     <div class="indicators">
       <div class="indicator">
@@ -729,7 +947,7 @@ function renderAnalysis(d) {
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" data-card="outlook">
     <div class="card-title">Outlook</div>
     <div class="outlook-grid">
       ${['short_term_1_3_days','medium_term_1_2_weeks','long_term_1_month'].map((k, i) => {
@@ -745,7 +963,7 @@ function renderAnalysis(d) {
   </div>
 
   ${ecr.low && ecr.high ? `
-  <div class="card">
+  <div class="card" data-card="range">
     <div class="card-title">Expected Close Range (Tomorrow)</div>
     <div class="range-bar-wrap">
       <div class="range-labels"><span>Low</span><span>Current</span><span>High</span></div>
@@ -755,14 +973,14 @@ function renderAnalysis(d) {
   </div>` : ''}
 
   ${news.articles && news.articles.length ? `
-  <div class="card">
+  <div class="card" data-card="news-sentiment">
     <div class="card-title">
       News Sentiment
       <span class="badge b-${news.sentiment_label === 'bullish' ? 'bullish' : news.sentiment_label === 'bearish' ? 'bearish' : 'neutral'}"
             style="margin-left:8px;font-size:0.7rem">${news.sentiment_label}</span>
     </div>
     <ul class="news-list">
-      ${news.articles.map(a => `
+      ${news.articles.slice(0, 3).map(a => `
       <li class="news-item">
         ${sentimentBadge(a.sentiment)}
         <div>
@@ -775,31 +993,26 @@ function renderAnalysis(d) {
 
   ${d.ml && !d.ml.error ? renderMLCard(d) : ''}
 
-  <div class="card" id="backtest-card">
+  ${renderFundamentalsCard(d.fundamentals)}
+
+  <div class="card" id="backtest-card" data-card="backtest">
     <div class="collapsible-header" onclick="toggleBacktest('${d.symbol}')">
       <div class="card-title" style="margin-bottom:0">Walk-Forward Backtest (5-year validation)</div>
       <span class="toggle-icon" id="bt-toggle-icon">▼</span>
     </div>
     <div class="collapsible-body" id="backtest-body">
-      <p style="color:var(--muted);font-size:0.85rem;margin-bottom:16px">
+      <p style="color:var(--muted);font-size:0.82rem;margin-bottom:12px">
         Trains a Random Forest on rolling 252-day windows, predicts 1 day ahead, and validates
         across ~1000 test days. Takes ~60–90 seconds.
       </p>
-      <button onclick="loadBacktest('${d.symbol}')" style="padding:8px 20px;font-size:0.82rem">
+      <button onclick="loadBacktest('${d.symbol}')" style="padding:6px 16px;font-size:0.8rem">
         Run Backtest
       </button>
-      <div id="backtest-result" style="margin-top:20px"></div>
+      <div id="backtest-result" style="margin-top:16px"></div>
     </div>
-  </div>
-
-  <div style="text-align:right;margin-top:8px">
-    <button class="secondary" onclick="switchTab('chat')" style="font-size:0.82rem;padding:8px 16px">
-      Chat about ${d.symbol} →
-    </button>
   </div>
   `;
 
-  // Feature importance chart (rendered after DOM settles)
   if (d.ml && d.ml.random_forest && d.ml.random_forest.feature_importances) {
     setTimeout(() => renderFeatureImportanceChart(d.ml.random_forest.feature_importances), 50);
   }
@@ -811,6 +1024,12 @@ function renderAnalysis(d) {
     activeChartType = 'line';
     setTimeout(rebuildChart, 50);
   }
+
+  // Always refresh news panel
+  renderNewsPanel(d.symbol, (d.news && d.news.articles) ? d.news.articles : []);
+
+  // Enable drag-to-reorder on all cards
+  setTimeout(() => initCardDrag(document.getElementById('analyse-result')), 80);
 }
 
 /* ══════════════════════════════════════════════
@@ -857,19 +1076,26 @@ function setChartType(type) {
 }
 
 function rebuildChart() {
+  // Destroy old instance
   if (sparkChart) { sparkChart.destroy(); sparkChart = null; }
-  const canvas = document.getElementById('sparkline');
-  if (!canvas) return;
+
+  // Replace canvas node to fully clear Chart.js internal state
+  const wrap = document.querySelector('.chart-wrap');
+  if (!wrap) return;
+  const oldCanvas = document.getElementById('sparkline');
+  if (!oldCanvas) return;
+  const newCanvas = document.createElement('canvas');
+  newCanvas.id = 'sparkline';
+  oldCanvas.replaceWith(newCanvas);
+
   const slice = getSlicedHistory();
   if (!slice.length) return;
 
-  const ctx    = canvas.getContext('2d');
-  const scaleOpts = {
-    x: { type: 'category', grid: { color: '#2a2d3e' },
-         ticks: { color: '#8892a4', maxTicksLimit: 8, font: { size: 10 } } },
-    y: { grid: { color: '#2a2d3e' },
-         ticks: { color: '#8892a4', font: { size: 10 },
-                  callback: v => '₹' + v.toLocaleString('en-IN') } }
+  const ctx = newCanvas.getContext('2d');
+  const yScale = {
+    grid: { color: '#2a2d3e' },
+    ticks: { color: '#8892a4', font: { size: 10 },
+             callback: v => '₹' + v.toLocaleString('en-IN') }
   };
 
   if (activeChartType === 'line') {
@@ -880,18 +1106,45 @@ function rebuildChart() {
       type: 'line',
       data: { labels, datasets: [{ data: closes, borderColor: color, borderWidth: 2,
         pointRadius: 0, fill: true, backgroundColor: color + '18', tension: 0.3 }] },
-      options: { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } }, scales: scaleOpts }
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { type: 'category', grid: { color: '#2a2d3e' },
+               ticks: { color: '#8892a4', maxTicksLimit: 8, font: { size: 10 } } },
+          y: yScale
+        }
+      }
     });
   } else {
-    const candleData = slice.map(h => ({ x: h.date, o: h.open, h: h.high, l: h.low, c: h.close }));
-    sparkChart = new Chart(ctx, {
-      type: 'candlestick',
-      data: { datasets: [{ label: 'OHLC', data: candleData,
-        color: { up: '#22c55e', down: '#ef4444', unchanged: '#8892a4' } }] },
-      options: { responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false } }, scales: scaleOpts }
-    });
+    try {
+      const candleData = slice.map(h => ({
+        x: new Date(h.date).getTime(),
+        o: h.open, h: h.high, l: h.low, c: h.close
+      }));
+      sparkChart = new Chart(ctx, {
+        type: 'candlestick',
+        data: { datasets: [{ label: 'OHLC', data: candleData,
+          color: { up: '#22c55e', down: '#ef4444', unchanged: '#8892a4' } }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { type: 'time', time: { unit: 'day', tooltipFormat: 'dd MMM yy',
+                 displayFormats: { day: 'dd MMM' } },
+                 grid: { color: '#2a2d3e' },
+                 ticks: { color: '#8892a4', maxTicksLimit: 8, font: { size: 10 } } },
+            y: yScale
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('Candlestick chart failed, falling back to line:', err);
+      activeChartType = 'line';
+      document.querySelectorAll('#chart-type-toggle .toggle-btn').forEach(b =>
+        b.classList.toggle('active', b.textContent.toLowerCase() === 'line'));
+      rebuildChart();
+    }
   }
 }
 
@@ -906,7 +1159,7 @@ async function runScan() {
   const status = document.getElementById('scan-status');
 
   btn.disabled = true;
-  loader.classList.add('show');
+  loader.style.display = 'inline';
   errEl.classList.remove('show');
   result.innerHTML = '';
   status.textContent = 'Scanning — please wait…';
@@ -923,7 +1176,7 @@ async function runScan() {
     status.textContent = '';
   } finally {
     btn.disabled = false;
-    loader.classList.remove('show');
+    loader.style.display = 'none';
   }
 }
 
@@ -957,7 +1210,7 @@ function renderScan(data) {
 }
 
 function jumpToAnalyse(symbol) {
-  switchTab('analyse');
+  closeScannerModal();
   document.getElementById('sym-input').value = symbol;
   analyseStock(symbol);
 }
@@ -977,23 +1230,21 @@ function setContext(symbol) {
 function clearContext() {
   currentSymbol = '';
   const el = document.getElementById('chat-context-display');
-  el.innerHTML = `<span class="no-context">None — analyse a stock to set context automatically</span>`;
+  el.innerHTML = `<span class="no-context">none</span>`;
 }
 
 function clearChat() {
   chatHistory = [];
   const msgs = document.getElementById('chat-messages');
   msgs.innerHTML = `<div id="chat-empty">
-    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:16px;">
-      Ask Artha anything about Indian stocks. Go to <strong>Analyse Stock</strong> first to set context, or ask a general question.
+    <p style="color:var(--muted);font-size:0.82rem;padding:6px 0">
+      Ask Artha about any Indian stock…
     </p>
     <div class="chat-suggestions" id="chat-suggestions">
-      <span class="suggestion" onclick="sendSuggestion(this)">What does the RSI tell me?</span>
-      <span class="suggestion" onclick="sendSuggestion(this)">Is this a good time to buy?</span>
-      <span class="suggestion" onclick="sendSuggestion(this)">Explain the MACD signal</span>
-      <span class="suggestion" onclick="sendSuggestion(this)">What are the short-term risks?</span>
-      <span class="suggestion" onclick="sendSuggestion(this)">How does news sentiment affect price?</span>
-      <span class="suggestion" onclick="sendSuggestion(this)">Compare short-term and long-term outlook</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Analyse RELIANCE</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">What does RSI tell me?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Best PSU stocks now?</span>
+      <span class="suggestion" onclick="sendSuggestion(this)">Explain MACD histogram</span>
     </div>
   </div>`;
 }
@@ -1004,7 +1255,6 @@ function sendSuggestion(el) {
 }
 
 function appendMsg(role, content) {
-  // Remove empty state
   const empty = document.getElementById('chat-empty');
   if (empty) empty.remove();
 
@@ -1049,60 +1299,135 @@ async function sendChat() {
   input.value = '';
   btn.disabled = true;
   appendMsg('user', msg);
-  appendTyping();
-
   chatHistory.push({ role: 'user', content: msg });
 
+  const bubble = appendStreamingBubble();
+
+  const payload = JSON.stringify({
+    message: msg,
+    context_symbol: currentSymbol,
+    history: chatHistory.slice(-10),
+  });
+
   try {
-    const res  = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        message: msg,
-        context_symbol: currentSymbol,
-        history: chatHistory.slice(-10),
-      })
-    });
-    const data = await res.json();
-
-    document.getElementById('typing-bubble')?.remove();
-
-    if (!res.ok) {
-      const errMsg = data.detail || 'Something went wrong.';
-      appendMsg('artha', errMsg);
-      // If Ollama not running, show helpful tip
+    const url  = '/api/chat/stream?payload=' + encodeURIComponent(payload);
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      const errMsg  = errData.detail || `HTTP ${resp.status}`;
+      bubble.textContent = 'Error: ' + errMsg;
+      bubble.parentElement.classList.remove('streaming');
       if (errMsg.includes('ollama serve') || errMsg.includes('not running')) {
         const msgs = document.getElementById('chat-messages');
         const tip  = document.createElement('div');
-        tip.style.cssText = 'color:var(--yellow);font-size:0.8rem;padding:8px 16px;background:#1c1408;border-radius:8px;margin:0 0 8px';
-        tip.textContent   = '💡 Tip: Open a terminal and run: ollama serve';
+        tip.style.cssText = 'color:var(--yellow);font-size:0.78rem;padding:6px 12px;background:#1c1408;border-radius:8px;margin:0 0 6px';
+        tip.textContent   = 'Tip: Open a terminal and run: ollama serve';
         msgs.appendChild(tip);
         msgs.scrollTop = msgs.scrollHeight;
       }
       return;
     }
 
-    const reply = data.reply || '…';
-    appendMsg('artha', reply);
-    chatHistory.push({ role: 'assistant', content: reply });
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-    // Update context if Ollama resolved a different symbol
-    if (data.symbol_used && data.symbol_used !== currentSymbol) {
-      setContext(data.symbol_used);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let evt;
+        try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+        if (evt.type === 'token') {
+          bubble.textContent += evt.content;
+          bubble.parentElement.scrollTop = bubble.parentElement.scrollHeight;
+          document.getElementById('chat-messages').scrollTop =
+            document.getElementById('chat-messages').scrollHeight;
+        } else if (evt.type === 'done') {
+          finaliseStreamBubble(bubble);
+          const sym = (evt.symbol_used || '').toUpperCase();
+          if (sym) {
+            const statsEmpty = !document.getElementById('analyse-result').innerHTML.trim();
+            if (sym !== currentSymbol || statsEmpty) analyseStock(sym);
+          }
+        } else if (evt.type === 'error') {
+          bubble.textContent = 'Error: ' + evt.detail;
+          bubble.parentElement.classList.remove('streaming');
+        }
+      }
     }
   } catch (e) {
-    document.getElementById('typing-bubble')?.remove();
-    appendMsg('artha', `Connection error: ${e.message}`);
+    bubble.textContent = 'Connection error: ' + e.message;
+    bubble.parentElement.classList.remove('streaming');
   } finally {
     btn.disabled = false;
     input.focus();
   }
 }
 
+function appendStreamingBubble() {
+  const empty = document.getElementById('chat-empty');
+  if (empty) empty.remove();
+
+  const msgs = document.getElementById('chat-messages');
+  const wrap = document.createElement('div');
+  wrap.className = 'msg artha streaming';
+  wrap.innerHTML = '<div class="msg-label">Artha</div>';
+  const bub = document.createElement('div');
+  bub.className = 'bubble msg-bubble';
+  wrap.appendChild(bub);
+  msgs.appendChild(wrap);
+  msgs.scrollTop = msgs.scrollHeight;
+  return bub;
+}
+
+function finaliseStreamBubble(bub) {
+  bub.parentElement.classList.remove('streaming');
+  chatHistory.push({ role: 'assistant', content: bub.textContent });
+}
+
+/* ══════════════════════════════════════════════
+   Fundamentals & Consensus
+══════════════════════════════════════════════ */
+function renderFundamentalsCard(f) {
+  if (!f || Object.keys(f).length === 0) return '';
+  const fv = (v, pct=false, dec=2) =>
+    v == null ? '—' : (pct ? (v*100).toFixed(1)+'%' : (+v).toFixed(dec));
+  return `
+  <div class="card" data-card="fundamentals">
+    <div class="card-title">FUNDAMENTALS</div>
+    <div class="fund-grid">
+      <div><label>P/E</label><span>${fv(f.pe_ratio,false,1)}</span></div>
+      <div><label>P/B</label><span>${fv(f.pb_ratio,false,2)}</span></div>
+      <div><label>ROE</label><span>${fv(f.roe,true,1)}</span></div>
+      <div><label>D/E</label><span>${fv(f.debt_to_equity,false,2)}</span></div>
+      <div><label>EPS</label><span>₹${fv(f.eps,false,2)}</span></div>
+      <div><label>Div Yield</label><span>${fv(f.dividend_yield,true,2)}</span></div>
+      <div><label>Rev Growth</label><span>${fv(f.revenue_growth,true,1)}</span></div>
+      <div><label>Net Margin</label><span>${fv(f.profit_margin,true,1)}</span></div>
+    </div>
+  </div>`;
+}
+
+function renderConsensusBanner(c) {
+  if (!c || !c.message) return '';
+  const cls  = c.agree ? 'consensus-agree' : 'consensus-conflict';
+  const icon = c.agree ? '✓' : '⚠';
+  return `
+  <div class="consensus-banner ${cls}">
+    <span class="consensus-icon">${icon}</span>
+    <span>${c.message}</span>
+    ${c.confidence ? `<span class="consensus-conf">${(+c.confidence).toFixed(1)}% confidence</span>` : ''}
+  </div>`;
+}
+
 /* ══════════════════════════════════════════════
    ML Rendering
 ══════════════════════════════════════════════ */
-
 function mlDirHtml(direction) {
   if (direction === 1)  return '<span style="color:var(--green);font-weight:700">▲ UP</span>';
   if (direction === -1) return '<span style="color:var(--red);font-weight:700">▼ DOWN</span>';
@@ -1133,19 +1458,18 @@ function mlProbBars(pUp, pDown, pNeutral) {
 function renderMLCard(d) {
   const ml  = d.ml || {};
   const rf  = ml.random_forest      || {};
-  const gb  = ml.gradient_boosting  || {};
   const gnb = ml.bayesian           || {};
   const lr  = ml.linear_regression  || {};
   const ens = ml.ensemble           || {};
 
   return `
-  <div class="card">
+  <div class="card" data-card="ml">
     <div class="card-title">ML Predictions <span style="color:var(--muted);font-size:0.65rem;font-weight:400;text-transform:none">&nbsp;trained on 5 years of data</span></div>
     <div class="ml-grid">
 
       <div class="ml-model-box">
         <div class="ml-model-label">Random Forest</div>
-        <div class="ml-direction">${mlDirHtml(rf.direction)} <span style="font-size:0.8rem;color:var(--muted);font-weight:400">${rf.confidence != null ? rf.confidence.toFixed(1)+'% conf' : ''}</span></div>
+        <div class="ml-direction">${mlDirHtml(rf.direction)} <span style="font-size:0.75rem;color:var(--muted);font-weight:400">${rf.confidence != null ? rf.confidence.toFixed(1)+'% conf' : ''}</span></div>
         ${mlProbBars(rf.prob_up, rf.prob_down, rf.prob_neutral)}
       </div>
 
@@ -1157,14 +1481,14 @@ function renderMLCard(d) {
 
       <div class="ml-model-box">
         <div class="ml-model-label">Ensemble (RF + Gradient Boosting)</div>
-        <div class="ml-direction">${mlDirHtml(ens.direction)} <span style="font-size:0.8rem;color:var(--muted);font-weight:400">${ens.confidence != null ? ens.confidence.toFixed(1)+'% conf' : ''}</span></div>
+        <div class="ml-direction">${mlDirHtml(ens.direction)} <span style="font-size:0.75rem;color:var(--muted);font-weight:400">${ens.confidence != null ? ens.confidence.toFixed(1)+'% conf' : ''}</span></div>
         ${mlProbBars(ens.prob_up, ens.prob_down, ens.prob_neutral)}
       </div>
 
       <div class="ml-model-box">
         <div class="ml-model-label">Linear Regression Target</div>
-        <div class="ml-direction" style="font-size:1.1rem">${lr.predicted_price ? fmt(lr.predicted_price) : '—'}</div>
-        <div style="font-size:0.82rem;color:var(--muted);margin-top:6px">
+        <div class="ml-direction" style="font-size:1rem">${lr.predicted_price ? fmt(lr.predicted_price) : '—'}</div>
+        <div style="font-size:0.78rem;color:var(--muted);margin-top:5px">
           Expected return:&nbsp;
           <span style="font-weight:700;color:${(lr.predicted_return_pct||0)>=0?'var(--green)':'var(--red)'}">
             ${lr.predicted_return_pct != null
@@ -1172,7 +1496,7 @@ function renderMLCard(d) {
               : '—'}
           </span>
         </div>
-        <div style="font-size:0.72rem;color:var(--muted);margin-top:4px">
+        <div style="font-size:0.68rem;color:var(--muted);margin-top:3px">
           Train R²:&nbsp;${lr.model_r2_train != null ? lr.model_r2_train.toFixed(3) : '—'}
         </div>
       </div>
@@ -1180,8 +1504,8 @@ function renderMLCard(d) {
     </div>
 
     ${rf.feature_importances ? `
-    <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:16px">
-      <div class="card-title" style="margin-bottom:8px">Feature Importance (Random Forest)</div>
+    <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:12px">
+      <div class="card-title" style="margin-bottom:6px">Feature Importance (Random Forest)</div>
       <div class="fi-chart-wrap"><canvas id="fi-chart"></canvas></div>
     </div>` : ''}
   </div>`;
@@ -1223,7 +1547,6 @@ function renderFeatureImportanceChart(importances) {
 /* ══════════════════════════════════════════════
    Backtest
 ══════════════════════════════════════════════ */
-
 function toggleBacktest(symbol) {
   const icon = document.getElementById('bt-toggle-icon');
   const body = document.getElementById('backtest-body');
@@ -1233,20 +1556,20 @@ function toggleBacktest(symbol) {
 
 async function loadBacktest(symbol) {
   const el = document.getElementById('backtest-result');
-  el.innerHTML = `<div class="loader show" style="padding:24px 0"><div class="spinner"></div>Running walk-forward backtest — please wait (~60–90s)…</div>`;
+  el.innerHTML = `<div class="loader show" style="padding:20px 0"><div class="spinner"></div>Running walk-forward backtest — please wait (~60–90s)…</div>`;
   try {
     const res  = await fetch(`/api/backtest/${symbol}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Unknown error');
     renderBacktestResult(data);
   } catch (e) {
-    el.innerHTML = `<p style="color:var(--red);font-size:0.88rem">Error: ${e.message}</p>`;
+    el.innerHTML = `<p style="color:var(--red);font-size:0.85rem">Error: ${e.message}</p>`;
   }
 }
 
 function renderBacktestResult(bt) {
-  const pct  = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : '—';
-  const cls  = v => v == null ? '' : v >= 0 ? 'bt-positive' : 'bt-negative';
+  const pct    = v => v != null ? (v >= 0 ? '+' : '') + v.toFixed(1) + '%' : '—';
+  const cls    = v => v == null ? '' : v >= 0 ? 'bt-positive' : 'bt-negative';
   const accCls = v => v == null ? '' : v >= 50 ? 'bt-positive' : 'bt-negative';
 
   document.getElementById('backtest-result').innerHTML = `
@@ -1282,7 +1605,7 @@ function renderBacktestResult(bt) {
   </div>
   ${bt.feature_importances ? `
   <div style="margin-top:4px">
-    <div class="card-title" style="margin-bottom:8px">Feature Contribution (Backtest RF)</div>
+    <div class="card-title" style="margin-bottom:6px">Feature Contribution (Backtest RF)</div>
     <div class="fi-chart-wrap"><canvas id="bt-fi-chart"></canvas></div>
   </div>` : ''}
   `;
@@ -1310,6 +1633,153 @@ function renderBacktestResult(bt) {
     }
   }
 }
+
+/* ══════════════════════════════════════════════
+   Card drag-to-reorder
+══════════════════════════════════════════════ */
+function saveCardOrder(container) {
+  const order = [...container.querySelectorAll('[data-card]')].map(c => c.dataset.card);
+  localStorage.setItem('artha-card-order', JSON.stringify(order));
+}
+
+function initCardDrag(container) {
+  const cards = [...container.querySelectorAll('[data-card]')];
+  if (!cards.length) return;
+
+  // Restore saved order
+  const saved = JSON.parse(localStorage.getItem('artha-card-order') || 'null');
+  if (saved && Array.isArray(saved)) {
+    saved.forEach(name => {
+      const el = container.querySelector(`[data-card="${name}"]`);
+      if (el) container.appendChild(el);
+    });
+  }
+
+  let dragSrc = null;
+
+  cards.forEach(card => {
+    // Inject grip handle — prefer direct-child .card-title, else collapsible-header
+    const titleEl = card.querySelector(':scope > .card-title')
+                 || card.querySelector(':scope > .collapsible-header')
+                 || card.querySelector('.card-title');
+    if (titleEl && !titleEl.querySelector('.card-drag-handle')) {
+      const handle = document.createElement('span');
+      handle.className = 'card-drag-handle';
+      handle.innerHTML = '&#8942;&#8942;'; // grip dots
+      handle.title = 'Drag to reorder';
+      titleEl.appendChild(handle);
+
+      // Only allow drag when initiated from the handle
+      handle.addEventListener('mousedown', () => { card.draggable = true; });
+      handle.addEventListener('mouseup',   () => { card.draggable = false; });
+      // Prevent handle clicks from triggering collapsible toggles etc.
+      handle.addEventListener('click', e => e.stopPropagation());
+    }
+
+    card.addEventListener('dragstart', e => {
+      dragSrc = card;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', card.dataset.card);
+      setTimeout(() => card.classList.add('dragging-card'), 0);
+    });
+
+    card.addEventListener('dragend', () => {
+      card.draggable = false;
+      if (dragSrc) dragSrc.classList.remove('dragging-card');
+      dragSrc = null;
+      saveCardOrder(container);
+    });
+
+    card.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (!dragSrc || dragSrc === card) return;
+      const rect = card.getBoundingClientRect();
+      if (e.clientY < rect.top + rect.height / 2) {
+        container.insertBefore(dragSrc, card);
+      } else {
+        container.insertBefore(dragSrc, card.nextElementSibling);
+      }
+    });
+  });
+}
+
+/* ══════════════════════════════════════════════
+   News panel vertical resize
+══════════════════════════════════════════════ */
+(function () {
+  const handle = document.getElementById('news-resize-handle');
+  const panel  = document.getElementById('news-panel');
+  let dragging = false, startY, startH;
+
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    startY   = e.clientY;
+    startH   = panel.getBoundingClientRect().height;
+    handle.classList.add('dragging');
+    document.body.style.cursor     = 'row-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    // Dragging up = bigger panel (subtract delta), down = smaller
+    const newH = Math.min(Math.max(startH - (e.clientY - startY), 60), 480);
+    panel.style.height = newH + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor     = '';
+    document.body.style.userSelect = '';
+  });
+
+  // Double-click resets to default height
+  handle.addEventListener('dblclick', () => { panel.style.height = '210px'; });
+})();
+
+/* ══════════════════════════════════════════════
+   Resizable split pane
+══════════════════════════════════════════════ */
+(function () {
+  const handle   = document.getElementById('resize-handle');
+  const split    = handle.parentElement;
+  const leftCol  = split.querySelector('.left-col');
+  let dragging   = false;
+  let startX, startW;
+
+  handle.addEventListener('mousedown', e => {
+    dragging = true;
+    startX   = e.clientX;
+    startW   = leftCol.getBoundingClientRect().width;
+    handle.classList.add('dragging');
+    document.body.style.cursor    = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const totalW  = split.getBoundingClientRect().width;
+    const newW    = Math.min(Math.max(startW + (e.clientX - startX), 220), totalW - 200);
+    leftCol.style.flex = `0 0 ${newW}px`;
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    handle.classList.remove('dragging');
+    document.body.style.cursor     = '';
+    document.body.style.userSelect = '';
+  });
+
+  // Double-click resets to default 56/44 split
+  handle.addEventListener('dblclick', () => {
+    leftCol.style.flex = '';
+  });
+})();
 
 /* ══════════════════════════════════════════════
    Init

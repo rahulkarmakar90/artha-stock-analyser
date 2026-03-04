@@ -98,7 +98,10 @@ REGISTRY = [
     {"symbol": "BOSCHLTD",    "name": "Bosch",                           "sector": "Auto",        "indices": ["Nifty Auto"]},
     {"symbol": "BALKRISIND",  "name": "Balkrishna Industries",           "sector": "Auto",        "indices": ["Nifty Auto"]},
     {"symbol": "MRF",         "name": "MRF",                             "sector": "Auto",        "indices": ["Nifty Auto"]},
-    {"symbol": "TATAMOTOR",   "name": "Tata Motors",                     "sector": "Auto",        "indices": ["Nifty Auto"]},
+    {"symbol": "TATAMOTORS",  "name": "Tata Motors",                     "sector": "Auto",        "indices": ["Nifty Auto"]},
+    {"symbol": "OLECTRA",     "name": "Olectra Greentech",               "sector": "Auto",        "indices": []},
+    {"symbol": "SONACOMS",    "name": "Sona BLW Precision Forgings",     "sector": "Auto",        "indices": []},
+    {"symbol": "TIINDIA",     "name": "Tube Investments of India",       "sector": "Auto",        "indices": []},
 
     # ── Nifty FMCG (extras) ───────────────────────────────────────────────
     {"symbol": "DABUR",       "name": "Dabur India",                     "sector": "FMCG",        "indices": ["Nifty FMCG"]},
@@ -291,15 +294,81 @@ REGISTRY = [
     {"symbol": "LOWVOLIETF",  "name": "ICICI Pru Nifty Low Volatility 30 ETF","sector": "ETF",    "indices": ["ETF", "ETF Factor"]},
     {"symbol": "ALPHA",       "name": "ICICI Pru Alpha Low Vol 30 ETF",   "sector": "ETF",         "indices": ["ETF", "ETF Factor"]},
     {"symbol": "QUAL30IETF",  "name": "ICICI Pru Nifty Quality Low Vol ETF","sector": "ETF",       "indices": ["ETF", "ETF Factor"]},
+
+    # ── New-Age / Recently Listed ─────────────────────────────────────────
+    {"symbol": "SAGILITY",    "name": "Sagility India",                  "sector": "Healthcare",  "indices": []},
+    {"symbol": "SWIGGY",      "name": "Swiggy",                          "sector": "Fintech",     "indices": []},
+    {"symbol": "HYUNDAI",     "name": "Hyundai Motor India",             "sector": "Auto",        "indices": []},
+    {"symbol": "HONASA",      "name": "Honasa Consumer (Mamaearth)",     "sector": "FMCG",        "indices": []},
+    {"symbol": "TATATECH",    "name": "Tata Technologies",               "sector": "IT",          "indices": []},
+    {"symbol": "JSWINFRA",    "name": "JSW Infrastructure",              "sector": "Infra",       "indices": []},
+    {"symbol": "BIKAJI",      "name": "Bikaji Foods International",      "sector": "FMCG",        "indices": []},
+
+    # ── Financial Services / NBFC ─────────────────────────────────────────
+    {"symbol": "SHRIRAMFIN",  "name": "Shriram Finance",                 "sector": "NBFC",        "indices": []},
+    {"symbol": "ABCAPITAL",   "name": "Aditya Birla Capital",            "sector": "NBFC",        "indices": []},
+    {"symbol": "ANGELONE",    "name": "Angel One",                       "sector": "Fintech",     "indices": []},
+    {"symbol": "KFINTECH",    "name": "KFin Technologies",               "sector": "Fintech",     "indices": []},
+    {"symbol": "NUVAMA",      "name": "Nuvama Wealth Management",        "sector": "NBFC",        "indices": []},
+    {"symbol": "PNBHOUSING",  "name": "PNB Housing Finance",             "sector": "NBFC",        "indices": []},
+    {"symbol": "CANFINHOME",  "name": "Can Fin Homes",                   "sector": "NBFC",        "indices": []},
+    {"symbol": "MANAPPURAM",  "name": "Manappuram Finance",              "sector": "NBFC",        "indices": []},
+    {"symbol": "MFSL",        "name": "Max Financial Services",          "sector": "NBFC",        "indices": []},
+    {"symbol": "MCX",         "name": "Multi Commodity Exchange",        "sector": "Fintech",     "indices": []},
+    {"symbol": "CDSL",        "name": "Central Depository Services",     "sector": "Fintech",     "indices": []},
+    {"symbol": "KARURVYSYA",  "name": "Karur Vysya Bank",                "sector": "Banking",     "indices": []},
+    {"symbol": "SUNDARMFIN",  "name": "Sundaram Finance",                "sector": "NBFC",        "indices": []},
+
+    # ── IT & Tech ─────────────────────────────────────────────────────────
+    {"symbol": "LATENTVIEW",  "name": "Latent View Analytics",           "sector": "IT",          "indices": []},
+    {"symbol": "BSOFT",       "name": "Birlasoft",                       "sector": "IT",          "indices": []},
+    {"symbol": "KAYNES",      "name": "Kaynes Technology India",         "sector": "IT",          "indices": []},
+
+    # ── Pharma / Healthcare ───────────────────────────────────────────────
+    {"symbol": "ZYDUSLIFE",   "name": "Zydus Lifesciences",              "sector": "Pharma",      "indices": []},
+    {"symbol": "METROPOLIS",  "name": "Metropolis Healthcare",           "sector": "Healthcare",  "indices": []},
+    {"symbol": "KRSNAA",      "name": "Krsnaa Diagnostics",              "sector": "Healthcare",  "indices": []},
+    {"symbol": "LALPATHLAB",  "name": "Dr Lal PathLabs",                 "sector": "Healthcare",  "indices": []},
+
+    # ── Energy / Gas / Power ──────────────────────────────────────────────
+    {"symbol": "JSWENERGY",   "name": "JSW Energy",                      "sector": "Power",       "indices": []},
+    {"symbol": "TORNTPOWER",  "name": "Torrent Power",                   "sector": "Power",       "indices": []},
+    {"symbol": "ATGL",        "name": "Adani Total Gas",                 "sector": "Energy",      "indices": []},
+    {"symbol": "IGL",         "name": "Indraprastha Gas",                "sector": "Energy",      "indices": []},
+    {"symbol": "MGL",         "name": "Mahanagar Gas",                   "sector": "Energy",      "indices": []},
+    {"symbol": "GSPL",        "name": "Gujarat State Petronet",          "sector": "Energy",      "indices": []},
+    {"symbol": "RPOWER",      "name": "Reliance Power",                  "sector": "Power",       "indices": []},
+
+    # ── Infra / PSU ───────────────────────────────────────────────────────
+    {"symbol": "IRCON",       "name": "IRCON International",             "sector": "Infra",       "indices": []},
+
+    # ── Consumer / QSR / Retail ───────────────────────────────────────────
+    {"symbol": "JUBLFOOD",    "name": "Jubilant FoodWorks",              "sector": "Retail",      "indices": []},
+    {"symbol": "PAGEIND",     "name": "Page Industries",                 "sector": "Retail",      "indices": []},
+    {"symbol": "CAMPUS",      "name": "Campus Activewear",               "sector": "Retail",      "indices": []},
+    {"symbol": "WESTLIFE",    "name": "Westlife Foodworld",              "sector": "Retail",      "indices": []},
+    {"symbol": "SAPPHIRE",    "name": "Sapphire Foods India",            "sector": "Retail",      "indices": []},
+    {"symbol": "DEVYANI",     "name": "Devyani International",           "sector": "Retail",      "indices": []},
+    {"symbol": "BLUEDART",    "name": "Blue Dart Express",               "sector": "Logistics",   "indices": []},
+    {"symbol": "AEGISLOG",    "name": "Aegis Logistics",                 "sector": "Logistics",   "indices": []},
+
+    # ── Cement ───────────────────────────────────────────────────────────
+    {"symbol": "DALBHARAT",   "name": "Dalmia Bharat",                   "sector": "Cement",      "indices": []},
+    {"symbol": "JKCEMENT",    "name": "JK Cement",                       "sector": "Cement",      "indices": []},
+    {"symbol": "RAMCOCEM",    "name": "Ramco Cements",                   "sector": "Cement",      "indices": []},
+    {"symbol": "NUVOCO",      "name": "Nuvoco Vistas Corporation",       "sector": "Cement",      "indices": []},
+
+    # ── Defence ───────────────────────────────────────────────────────────
+    {"symbol": "PARAS",       "name": "Paras Defence and Space Technologies", "sector": "Defence", "indices": []},
 ]
 
 # ── Aliases (common short names / abbreviations) ─────────────────────────
 ALIASES = {
     "ril":         "RELIANCE",
     "reliance":    "RELIANCE",
-    "tata motors": "TATAMOTOR",
+    "tata motors": "TATAMOTORS",
     "tata steel":  "TATASTEEL",
-    "tata motors": "TATAMOTOR",
+    "tata motors": "TATAMOTORS",
     "tata power":  "TATAPOWER",
     "tata chem":   "TATACHEM",
     "tata consumer": "TATACONSUM",
@@ -587,6 +656,84 @@ ALIASES = {
     "unilever":    "HINDUNILVR",
     "hdfc amc":    "HDFCAMC",
     "justdial":    "JUSTDIAL",
+    # New-Age / Recently Listed
+    "sagility":    "SAGILITY",
+    "swiggy":      "SWIGGY",
+    "hyundai":     "HYUNDAI",
+    "mamaearth":   "HONASA",
+    "honasa":      "HONASA",
+    "tata tech":   "TATATECH",
+    "tata technologies": "TATATECH",
+    "jsw infra":   "JSWINFRA",
+    "jsw infrastructure": "JSWINFRA",
+    "bikaji":      "BIKAJI",
+    # Financial Services
+    "shriram finance": "SHRIRAMFIN",
+    "shriram":     "SHRIRAMFIN",
+    "ab capital":  "ABCAPITAL",
+    "aditya birla capital": "ABCAPITAL",
+    "angel one":   "ANGELONE",
+    "angel":       "ANGELONE",
+    "kfin":        "KFINTECH",
+    "nuvama":      "NUVAMA",
+    "pnb housing": "PNBHOUSING",
+    "can fin":     "CANFINHOME",
+    "manappuram":  "MANAPPURAM",
+    "max financial": "MFSL",
+    "mcx":         "MCX",
+    "cdsl":        "CDSL",
+    "karur vysya": "KARURVYSYA",
+    "sundaram finance": "SUNDARMFIN",
+    # IT / Tech
+    "latent view": "LATENTVIEW",
+    "birlasoft":   "BSOFT",
+    "kaynes":      "KAYNES",
+    # Pharma / Healthcare
+    "zydus":       "ZYDUSLIFE",
+    "zydus life":  "ZYDUSLIFE",
+    "metropolis":  "METROPOLIS",
+    "krsnaa":      "KRSNAA",
+    "dr lal":      "LALPATHLAB",
+    "lal pathlabs": "LALPATHLAB",
+    # Energy / Power
+    "jsw energy":  "JSWENERGY",
+    "torrent power": "TORNTPOWER",
+    "adani gas":   "ATGL",
+    "adani total gas": "ATGL",
+    "indraprastha gas": "IGL",
+    "mahanagar gas": "MGL",
+    "gujarat gas": "GSPL",
+    "reliance power": "RPOWER",
+    # Infra
+    "ircon":       "IRCON",
+    # Consumer / QSR
+    "jubilant":    "JUBLFOOD",
+    "dominos":     "JUBLFOOD",
+    "page industries": "PAGEIND",
+    "jockey":      "PAGEIND",
+    "campus":      "CAMPUS",
+    "westlife":    "WESTLIFE",
+    "mcdonalds":   "WESTLIFE",
+    "sapphire":    "SAPPHIRE",
+    "devyani":     "DEVYANI",
+    "kfc":         "DEVYANI",
+    "blue dart":   "BLUEDART",
+    "bluedart":    "BLUEDART",
+    "aegis":       "AEGISLOG",
+    # Cement
+    "dalmia":      "DALBHARAT",
+    "jk cement":   "JKCEMENT",
+    "ramco":       "RAMCOCEM",
+    "nuvoco":      "NUVOCO",
+    # Defence
+    "paras defence": "PARAS",
+    "paras":       "PARAS",
+    "paras space": "PARAS",
+    # Auto
+    "olectra":     "OLECTRA",
+    "sona blw":    "SONACOMS",
+    "sona":        "SONACOMS",
+    "tube investments": "TIINDIA",
 }
 
 # ── Sector keyword → sector name mapping ──────────────────────────────────

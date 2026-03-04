@@ -72,6 +72,27 @@ class StockDataFetcher:
             "52_week_low": info.get("fiftyTwoWeekLow"),
         }
     
+    def get_fundamentals(self, symbol: str, exchange: str = "NSE") -> dict:
+        """Return key fundamental metrics from yfinance .info"""
+        if not (symbol.endswith('.NS') or symbol.endswith('.BO')):
+            suffix = ".BO" if exchange == "BSE" else ".NS"
+            symbol = f"{symbol}{suffix}"
+        info = yf.Ticker(symbol).info
+        return {
+            "pe_ratio":       info.get("trailingPE"),
+            "pb_ratio":       info.get("priceToBook"),
+            "roe":            info.get("returnOnEquity"),
+            "debt_to_equity": info.get("debtToEquity"),
+            "eps":            info.get("trailingEps"),
+            "dividend_yield": info.get("dividendYield"),
+            "revenue_growth": info.get("revenueGrowth"),
+            "profit_margin":  info.get("profitMargins"),
+            "market_cap":     info.get("marketCap"),
+            "sector":         info.get("sector", ""),
+            "industry":       info.get("industry", ""),
+            "long_name":      info.get("longName", symbol),
+        }
+
     def get_intraday_data(self, symbol: str):
         """Get intraday data for candlestick charts"""
         if not (symbol.endswith('.NS') or symbol.endswith('.BO')):
